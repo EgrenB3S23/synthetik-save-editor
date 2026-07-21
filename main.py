@@ -1,4 +1,4 @@
-"""Synthetik 1 save file editor — simple CLI."""
+"""Synthetik save file editor — simple CLI."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ DEFAULT_SAVE_NAME = "Save.sav"
 def ask_save_path() -> Path:
     """Ask the user for a save file path, or use the default in the current folder."""
     user_input = input(
-        f"Enter the full path to your save file (leave empty for ./{DEFAULT_SAVE_NAME}): "
+        f"Enter the full path to your save file:\n(or leave empty to use current folder)\n(example: C:\\Users\\<YourUsername>\\AppData\\Local\\Synthetik\\Save.sav)"
     ).strip()
 
     if user_input:
@@ -59,33 +59,58 @@ def get_data_current_value(save_path: Path) -> str | None:
     return savefile.get_variable_value(lines, variables.DATA_VARIABLE)
 
 
-def print_menu(save_path: Path) -> None:
-    print()
-    print("=== Synthetik 1 Save Editor ===")
-    print(f"Save file: {save_path.resolve()}")
-    print()
+def build_menu_options(save_path: Path) -> dict[str, str]:
+    """Build the text for each menu option."""
     default_perk_value = savefile.format_display_value(variables.PERK_DAILY_MODULE_BOOST_VALUE)
-    print(f"1. Set all perk daily module boosts (default {default_perk_value})")
-    print("2. Show current perk daily module boosts")
     data_value = get_data_current_value(save_path)
+
     if data_value is not None:
         current_data = savefile.format_display_value(data_value)
-        print(f"3. Set data to 1000 (current: {current_data})")
+        data_option = f"3. Data: Set to 1000 (current: {current_data})"
     else:
-        print("3. Set data to 1000 (current: unknown)")
-    print("4. Choose a different save file")
-    print("0. Exit")
+        data_option = "3. Data: Set to 1000 (current: unknown)"
+
+    return {
+        "1": f"1. Perks: Set all daily boosts to # (default {default_perk_value})",
+        "2": "2. Perks: Show current daily boosts",
+        "3": data_option,
+        "4": "4. Choose a different save file",
+        "0": "0. Exit",
+    }
+
+
+def print_menu(save_path: Path) -> dict[str, str]:
+    """Print the menu and return the option labels keyed by choice."""
+    options = build_menu_options(save_path)
+
     print()
+    print("=== Synthetik Save Editor ===")
+    print(f"Save file: {save_path.resolve()}")
+    print()
+    for key in ("1", "2", "3", "4", "0"):
+        print(options[key])
+    print()
+
+    return options
+
+
+def announce_choice(options: dict[str, str], choice: str) -> None:
+    """Print the chosen menu option before running it."""
+    print()
+    print(options[choice])
 
 
 def run_menu(save_path: Path) -> Path | None:
-    """Show the menu and run the chosen action.
-
-    Returns a new save path if the user picks option 4, or None to exit.
-    """
+    """Show the menu and run the chosen action."""
     while True:
-        print_menu(save_path)
+        options = print_menu(save_path)
         choice = input("Choose an option: ").strip()
+
+        if choice not in options:
+            print("Invalid choice. Please enter a number.")
+            continue
+
+        announce_choice(options, choice)
 
         if choice == "1":
             perk_value = ask_perk_boost_value()
@@ -104,12 +129,10 @@ def run_menu(save_path: Path) -> Path | None:
                 return new_path
         elif choice == "0":
             return None
-        else:
-            print("Invalid choice. Please enter 0, 1, 2, 3, or 4.")
 
 
 def main() -> None:
-    print("Welcome to the Synthetik 1 Save Editor")
+    print("Welcome to Egren's Synthetik Save Editor!")
 
     save_path = ask_save_path()
     if not validate_save_path(save_path):
