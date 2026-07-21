@@ -36,7 +36,7 @@ def validate_save_path(save_path: Path) -> bool:
 def ask_perk_boost_value() -> str | None:
     """Ask for a perk boost value, or return the default when input is empty."""
     default = variables.PERK_DAILY_MODULE_BOOST_VALUE
-    formatted_default = savefile.format_save_value(default)
+    formatted_default = savefile.format_display_value(default)
     user_input = input(
         f"Enter perk boost value (leave empty for default {formatted_default}): "
     ).strip()
@@ -53,14 +53,25 @@ def ask_perk_boost_value() -> str | None:
     return user_input
 
 
+def get_data_current_value(save_path: Path) -> str | None:
+    """Read the current data value from the save file."""
+    lines = savefile.read_lines(save_path)
+    return savefile.get_variable_value(lines, variables.DATA_VARIABLE)
+
+
 def print_menu(save_path: Path) -> None:
     print()
     print("=== Synthetik 1 Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    default_perk_value = savefile.format_save_value(variables.PERK_DAILY_MODULE_BOOST_VALUE)
+    default_perk_value = savefile.format_display_value(variables.PERK_DAILY_MODULE_BOOST_VALUE)
     print(f"1. Set all perk daily module boosts (default {default_perk_value})")
-    print("2. Set data to 1000")
+    data_value = get_data_current_value(save_path)
+    if data_value is not None:
+        current_data = savefile.format_display_value(data_value)
+        print(f"2. Set data to 1000 (current: {current_data})")
+    else:
+        print("2. Set data to 1000 (current: unknown)")
     print("3. Choose a different save file")
     print("0. Exit")
     print()

@@ -43,6 +43,17 @@ def format_save_value(value: str) -> str:
         return value
 
 
+def format_display_value(value: str) -> str:
+    """Format a value for display, e.g. 6.000000 -> 6 and 1.250000 -> 1.25."""
+    try:
+        number = float(value)
+        if number == int(number):
+            return str(int(number))
+        return f"{number:.6f}".rstrip("0").rstrip(".")
+    except ValueError:
+        return value
+
+
 def split_line(line: str) -> tuple[str, str, str, str] | None:
     """Split one save line into whitespace, variable name, value, and line ending."""
     line_body = line.rstrip("\r\n")
@@ -59,6 +70,16 @@ def build_line(whitespace: str, variable_name: str, value: str, line_ending: str
     """Rebuild one save line from its parts."""
     formatted_value = format_save_value(value)
     return f'{whitespace}{variable_name}="{formatted_value}"{line_ending}'
+
+
+def get_variable_value(lines: list[str], variable_name: str) -> str | None:
+    """Return the current value of one variable, or None if it is not in the file."""
+    for line in lines:
+        parts = split_line(line)
+        if parts and parts[1] == variable_name:
+            return parts[2]
+
+    return None
 
 
 def set_variable(lines: list[str], variable_name: str, new_value: str) -> tuple[list[str], bool]:

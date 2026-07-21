@@ -2,5 +2,8 @@
 Save.sav
 *.backup.*.sav
 
+# Personal planning notes
+TODO.md
+
 __pycache__/
 *.py[cod]

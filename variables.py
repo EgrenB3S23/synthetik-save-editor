@@ -4,9 +4,9 @@ Each normal perk daily module boost uses:
     tpoints_obj_perk_<id>="1.600000"
 """
 
-# Resource used for alternative game modes (Hyper Adrenaline, etc.).
-# Confirm the exact name from your save — this copy does not contain a plain "data" key.
-DATA_VARIABLE = "data"
+# In-game "data" resource for alternative modes (Hyper Adrenaline, etc.).
+# Save file variable name: currency
+DATA_VARIABLE = "currency"
 
 # Shared prefix for the 62 normal class perks.
 PERK_VARIABLE_PREFIX = "tpoints_obj_perk_"

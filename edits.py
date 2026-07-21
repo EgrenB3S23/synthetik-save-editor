@@ -23,7 +23,7 @@ def apply_edit(save_path: Path, edit_function) -> None:
 def set_all_perk_daily_module_boosts(lines: list[str], value: str) -> tuple[list[str], str]:
     """Set all 62 normal perk daily module boosts to the given value."""
     target_names = set(variables.main_perk_variable_names())
-    formatted_value = savefile.format_save_value(value)
+    formatted_value = savefile.format_display_value(value)
     updated_lines, found = savefile.set_variables(lines, target_names, value)
     missing = sorted(target_names - found)
 
@@ -40,13 +40,11 @@ def set_all_perk_daily_module_boosts(lines: list[str], value: str) -> tuple[list
 def set_data_to_1000(lines: list[str]) -> tuple[list[str], str]:
     """Set the data resource to 1000."""
     updated_lines, found = savefile.set_variable(lines, variables.DATA_VARIABLE, "1000")
+    formatted_value = savefile.format_display_value("1000")
 
     if found:
-        summary = f"Set {variables.DATA_VARIABLE} to 1000."
+        summary = f"Set data to {formatted_value}."
     else:
-        summary = (
-            f"Variable '{variables.DATA_VARIABLE}' was not found in the save file. "
-            "Check variables.py once you know the exact name."
-        )
+        summary = f"Variable '{variables.DATA_VARIABLE}' was not found in the save file."
 
     return updated_lines, summary
