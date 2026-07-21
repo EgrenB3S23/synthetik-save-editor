@@ -11,10 +11,9 @@ DATA_VARIABLE = "currency"
 # Shared prefix for the 62 normal class perks.
 PERK_VARIABLE_PREFIX = "tpoints_obj_perk_"
 
-# Perk IDs only — the part after the prefix above.
-PERKS = {
-    "main": [
-        # Guardian (16)
+# Normal class perks grouped by class. Order within each list is intentional.
+PERK_CLASSES: list[tuple[str, list[str]]] = [
+    ("Guardian", [
         "iframe",
         "warmup",
         "recovery",
@@ -31,7 +30,8 @@ PERKS = {
         "berserk",
         "return",
         "reloadsurge2",
-        # Rogue (15)
+    ]),
+    ("Rogue", [
         "headshotammo",
         "ejectsurge",
         "dodgeboost",
@@ -47,7 +47,8 @@ PERKS = {
         "stealback",
         "diehard",
         "healthy",
-        # Commando (15)
+    ]),
+    ("Commando", [
         "classweapon",
         "reloadstack",
         "powerstep",
@@ -63,7 +64,8 @@ PERKS = {
         "cover",
         "killer",
         "drill",
-        # Specialist (16)
+    ]),
+    ("Specialist", [
         "statusextender",
         "heatup",
         "grenadier",
@@ -80,13 +82,18 @@ PERKS = {
         "dodgeheat",
         "sunrise",
         "force",
-    ],
-}
+    ]),
+]
 
 # Default perk boost value when the user presses Enter at the prompt.
 PERK_DAILY_MODULE_BOOST_VALUE = "1.6"
 
 
+def main_perk_ids() -> list[str]:
+    """Return all 62 normal perk IDs in class order."""
+    return [perk_id for _, perk_ids in PERK_CLASSES for perk_id in perk_ids]
+
+
 def main_perk_variable_names() -> list[str]:
     """Build the full save variable names for all 62 normal perks."""
-    return [f"{PERK_VARIABLE_PREFIX}{perk_id}" for perk_id in PERKS["main"]]
+    return [f"{PERK_VARIABLE_PREFIX}{perk_id}" for perk_id in main_perk_ids()]

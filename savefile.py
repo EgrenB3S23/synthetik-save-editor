@@ -56,24 +56,6 @@ def format_display_value(value: str) -> str:
         return value
 
 
-def format_perk_boost_summary_value(value: str) -> str:
-    """Format a perk boost value for the summary list, with at least 2 decimal places."""
-    try:
-        number = float(value)
-        text = f"{number:.6f}".rstrip("0").rstrip(".")
-
-        if "." not in text:
-            return f"{text}.00"
-
-        integer_part, decimal_part = text.split(".", 1)
-        if len(decimal_part) < 2:
-            decimal_part = decimal_part.ljust(2, "0")
-
-        return f"{integer_part}.{decimal_part}"
-    except ValueError:
-        return value
-
-
 def split_line(line: str) -> tuple[str, str, str, str] | None:
     """Split one save line into whitespace, variable name, value, and line ending."""
     line_body = line.rstrip("\r\n")
@@ -158,3 +140,18 @@ def count_main_perk_boost_values(lines: list[str]) -> tuple[dict[str, int], int]
 
     missing_count = len(target_names) - found
     return counts, missing_count
+
+
+def get_main_perk_values(lines: list[str]) -> dict[str, str | None]:
+    """Map each normal perk ID to its current save value, or None if missing."""
+    perk_values = {perk_id: None for perk_id in variables.main_perk_ids()}
+    variable_to_perk_id = {
+        f"{variables.PERK_VARIABLE_PREFIX}{perk_id}": perk_id for perk_id in perk_values
+    }
+
+    for line in lines:
+        parts = split_line(line)
+        if parts and parts[1] in variable_to_perk_id:
+            perk_values[variable_to_perk_id[parts[1]]] = parts[2]
+
+    return perk_values
