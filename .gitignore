@@ -1,0 +1,6 @@
+# Local save copies and backups should stay on your machine only.
+Save.sav
+*.backup.*.sav
+
+__pycache__/
+*.py[cod]
