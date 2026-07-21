@@ -7,6 +7,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+import variables
+
 # Matches lines like:  tpoints_obj_perk_force="1.600000"
 # The variable name is everything before the = sign.
 SAVE_LINE_PATTERN = re.compile(r'^(\s*)(.+?)\s*=\s*"(.*)"\s*$')
@@ -50,6 +52,24 @@ def format_display_value(value: str) -> str:
         if number == int(number):
             return str(int(number))
         return f"{number:.6f}".rstrip("0").rstrip(".")
+    except ValueError:
+        return value
+
+
+def format_perk_boost_summary_value(value: str) -> str:
+    """Format a perk boost value for the summary list, with at least 2 decimal places."""
+    try:
+        number = float(value)
+        text = f"{number:.6f}".rstrip("0").rstrip(".")
+
+        if "." not in text:
+            return f"{text}.00"
+
+        integer_part, decimal_part = text.split(".", 1)
+        if len(decimal_part) < 2:
+            decimal_part = decimal_part.ljust(2, "0")
+
+        return f"{integer_part}.{decimal_part}"
     except ValueError:
         return value
 
@@ -118,3 +138,23 @@ def set_variables(lines: list[str], variable_names: set[str], new_value: str) ->
             new_lines.append(line)
 
     return new_lines, found
+
+
+def count_main_perk_boost_values(lines: list[str]) -> tuple[dict[str, int], int]:
+    """Count how many normal perks have each boost value.
+
+    Returns value counts and how many of the 62 perk variables were missing.
+    """
+    target_names = set(variables.main_perk_variable_names())
+    counts: dict[str, int] = {}
+    found = 0
+
+    for line in lines:
+        parts = split_line(line)
+        if parts and parts[1] in target_names:
+            value = parts[2]
+            counts[value] = counts.get(value, 0) + 1
+            found += 1
+
+    missing_count = len(target_names) - found
+    return counts, missing_count

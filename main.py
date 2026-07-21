@@ -66,13 +66,14 @@ def print_menu(save_path: Path) -> None:
     print()
     default_perk_value = savefile.format_display_value(variables.PERK_DAILY_MODULE_BOOST_VALUE)
     print(f"1. Set all perk daily module boosts (default {default_perk_value})")
+    print("2. Show current perk daily module boosts")
     data_value = get_data_current_value(save_path)
     if data_value is not None:
         current_data = savefile.format_display_value(data_value)
-        print(f"2. Set data to 1000 (current: {current_data})")
+        print(f"3. Set data to 1000 (current: {current_data})")
     else:
-        print("2. Set data to 1000 (current: unknown)")
-    print("3. Choose a different save file")
+        print("3. Set data to 1000 (current: unknown)")
+    print("4. Choose a different save file")
     print("0. Exit")
     print()
 
@@ -80,7 +81,7 @@ def print_menu(save_path: Path) -> None:
 def run_menu(save_path: Path) -> Path | None:
     """Show the menu and run the chosen action.
 
-    Returns a new save path if the user picks option 3, or None to exit.
+    Returns a new save path if the user picks option 4, or None to exit.
     """
     while True:
         print_menu(save_path)
@@ -94,15 +95,17 @@ def run_menu(save_path: Path) -> Path | None:
                     lambda lines: edits.set_all_perk_daily_module_boosts(lines, perk_value),
                 )
         elif choice == "2":
-            edits.apply_edit(save_path, edits.set_data_to_1000)
+            edits.show_perk_daily_module_boosts(save_path)
         elif choice == "3":
+            edits.apply_edit(save_path, edits.set_data_to_1000)
+        elif choice == "4":
             new_path = ask_save_path()
             if validate_save_path(new_path):
                 return new_path
         elif choice == "0":
             return None
         else:
-            print("Invalid choice. Please enter 0, 1, 2, or 3.")
+            print("Invalid choice. Please enter 0, 1, 2, 3, or 4.")
 
 
 def main() -> None:
