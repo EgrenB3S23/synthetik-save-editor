@@ -83,7 +83,7 @@ PERKS = {
     ],
 }
 
-# Value applied when using the "set all perk boosts" menu option.
+# Default perk boost value when the user presses Enter at the prompt.
 PERK_DAILY_MODULE_BOOST_VALUE = "1.6"
 
 

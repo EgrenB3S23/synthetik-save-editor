@@ -20,19 +20,16 @@ def apply_edit(save_path: Path, edit_function) -> None:
     print(summary)
 
 
-def set_all_perk_daily_module_boosts(lines: list[str]) -> tuple[list[str], str]:
-    """Set all 62 normal perk daily module boosts to the configured value."""
+def set_all_perk_daily_module_boosts(lines: list[str], value: str) -> tuple[list[str], str]:
+    """Set all 62 normal perk daily module boosts to the given value."""
     target_names = set(variables.main_perk_variable_names())
-    updated_lines, found = savefile.set_variables(
-        lines,
-        target_names,
-        variables.PERK_DAILY_MODULE_BOOST_VALUE,
-    )
+    formatted_value = savefile.format_save_value(value)
+    updated_lines, found = savefile.set_variables(lines, target_names, value)
     missing = sorted(target_names - found)
 
     summary = (
         f"Updated {len(found)} of {len(target_names)} normal perk boost(s) "
-        f"to {variables.PERK_DAILY_MODULE_BOOST_VALUE}."
+        f"to {formatted_value}."
     )
     if missing:
         summary += "\nNot found in save file:\n  " + "\n  ".join(missing)

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import edits
+import savefile
+import variables
 
 
 DEFAULT_SAVE_NAME = "Save.sav"
@@ -31,12 +33,33 @@ def validate_save_path(save_path: Path) -> bool:
     return False
 
 
+def ask_perk_boost_value() -> str | None:
+    """Ask for a perk boost value, or return the default when input is empty."""
+    default = variables.PERK_DAILY_MODULE_BOOST_VALUE
+    formatted_default = savefile.format_save_value(default)
+    user_input = input(
+        f"Enter perk boost value (leave empty for default {formatted_default}): "
+    ).strip()
+
+    if not user_input:
+        return default
+
+    try:
+        float(user_input)
+    except ValueError:
+        print("Invalid number. No changes were made.")
+        return None
+
+    return user_input
+
+
 def print_menu(save_path: Path) -> None:
     print()
     print("=== Synthetik 1 Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    print("1. Set all perk daily module boosts to 1.6")
+    default_perk_value = savefile.format_save_value(variables.PERK_DAILY_MODULE_BOOST_VALUE)
+    print(f"1. Set all perk daily module boosts (default {default_perk_value})")
     print("2. Set data to 1000")
     print("3. Choose a different save file")
     print("0. Exit")
@@ -53,7 +76,12 @@ def run_menu(save_path: Path) -> Path | None:
         choice = input("Choose an option: ").strip()
 
         if choice == "1":
-            edits.apply_edit(save_path, edits.set_all_perk_daily_module_boosts)
+            perk_value = ask_perk_boost_value()
+            if perk_value is not None:
+                edits.apply_edit(
+                    save_path,
+                    lambda lines: edits.set_all_perk_daily_module_boosts(lines, perk_value),
+                )
         elif choice == "2":
             edits.apply_edit(save_path, edits.set_data_to_1000)
         elif choice == "3":
