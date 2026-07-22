@@ -2,8 +2,14 @@
 Save.sav
 *.backup.*.sav
 
-# Personal planning notes
+# Personal / local notes
 TODO.md
+.scratch
+
+# PyInstaller output
+build/
+dist/
+main.spec
 
 __pycache__/
 *.py[cod]
