@@ -62,6 +62,20 @@ Follow the on-screen menu. On some systems the command may be `python main.py` i
 [Official Python download page](https://www.python.org/downloads/)
 (The tool was tested with [Python 3.13](https://www.python.org/downloads/latest/python3.13/) on Windows 10)
 
+---
+
+## Backups
+
+Every time an edit is applied, the tool first makes a copy of the unedited savefile, adding a timestamp to the filename. Example:
+
+`Save.backup.20260721_203812.sav`
+
+Backups are created **next to the save file being edited**, with the same base name plus a timestamp. You can keep several backups at once.
+
+---
+
+## Dev stuff
+
 <details>
 <summary>Project files overview</summary>
 
@@ -73,16 +87,6 @@ Follow the on-screen menu. On some systems the command may be `python main.py` i
 | `variables.py` | Perk names and other savefile variable names |
 
 </details>
-
----
-
-## Backups
-
-Every time an edit is applied, the tool first makes a copy of the unedited savefile, adding a timestamp to the filename. Example:
-
-`Save.backup.20260721_203812.sav`
-
-Backups are created **next to the save file being edited**, with the same base name plus a timestamp. You can keep several backups at once.
 
 ---
 
