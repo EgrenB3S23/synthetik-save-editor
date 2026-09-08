@@ -2,6 +2,24 @@
 
 A simple command-line tool for editing **Synthetik** (Synthetik 1) save files on PC.
 
+## No Python? Use the `.exe`
+
+1. Download **`synthetik-save-editor.exe`** from the [latest release](https://github.com/EgrenB3S23/synthetik-save-editor/releases/latest).
+2. Put it anywhere you like (Desktop, a folder next to your save, etc.).
+3. Double-click it, or run from a terminal. Paste your save path when prompted.
+
+   Or run with a path argument:
+
+   ```console
+   synthetik-save-editor.exe "C:\Users\<UserName>\AppData\Local\Synthetik"
+   ```
+
+Same menus and backups as the Python version. Windows 10/11, 64-bit.
+
+---
+
+## Or run from source (Python)
+
 To run, run this in cmd or whatever flavor of shell you prefer:
 
 ```console

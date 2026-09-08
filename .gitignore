@@ -9,7 +9,7 @@ TODO.md
 # PyInstaller output
 build/
 dist/
-main.spec
+*.spec
 
 __pycache__/
 *.py[cod]
