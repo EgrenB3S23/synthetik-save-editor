@@ -2,6 +2,8 @@
 
 A simple command-line tool for editing **Synthetik** (Synthetik 1) save files on PC.
 
+![Main menu screenshot](images/SSEv1_1_main_menu.png)
+
 ## No Python? Use the `.exe`
 
 1. Download **`synthetik-save-editor.exe`** from the [latest release](https://github.com/EgrenB3S23/synthetik-save-editor/releases/latest).
