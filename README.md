@@ -7,7 +7,9 @@ To run, run this in cmd or whatever flavor of shell you prefer:
 ```console
 py main.py
 ```
+
 or:
+
 ```console
 python main.py
 ```
@@ -16,28 +18,27 @@ python main.py
 
 ## Current features
 
-- **Change daily module bonuses** to whatever values you want. (currently only supports editing ALL perks' power to the same value)
-- **Set data to 1000** (stored in the save as `currency`, used for modes like Hyper Adrenaline)
-- (The value here is probably more for me as a python exercise than for you as an impressive tool. **:shrug:** )
+- **Change daily module bonuses** to any number.
+- **View current perk boosts**.
+- **Set 'data' to 1000**.
 
 ---
 
-## TODO features (= not yet implemented)
 
-- **Change daily module bonuses >>individually<<** - (until then, you have to do it manually in notepad :( )
-- **Randomize daily module bonuses** instead of just "set all to X".
-
----
 
 ## Before you start
 
 1. **Close Synthetik**.
 2. **Back up your save** yourself if you want extra safety — the tool also creates its own backup on every edit.
 3. Find your save file. On Windows it is usually:
-  `C:\Users\<YourUsername>\AppData\Local\Synthetik\Save.sav`
-   The tool will ask for this path when it starts. You can paste the full path, or leave it empty to use `Save.sav` in the folder you're running from.
+
+   `C:\Users\<YourUsername>\AppData\Local\Synthetik\Save.sav`
+
+   When the tool starts, you can paste the **full path to the file**, or the **folder containing it** (it will look for `Save.sav` inside). Leave empty to use `Save.sav` in the folder you're running from. You can also pass a path on the command line, e.g. `py main.py "C:\Users\<YourUsername>\AppData\Local\Synthetik"`.
 
 ---
+
+
 
 ## How to use
 
@@ -46,7 +47,9 @@ You need **Python 3** installed. Check from a terminal:
 ```console
 py --version
 ```
+
 or
+
 ```console
 python --version
 ```
@@ -59,10 +62,20 @@ py main.py
 
 Follow the on-screen menu. On some systems the command may be `python main.py` instead of `py main.py`.
 
+Tip: make a *.bat file to avoid having to provide the savefile path every time you run the tool.
+Example:
+```bat
+@echo off
+cd /d "E:\synthetik-save-editor"
+py main.py "C:\Users\<UserName>\AppData\Local\Synthetik\Save.sav"
+```
+
 [Official Python download page](https://www.python.org/downloads/)
 (The tool was tested with [Python 3.13](https://www.python.org/downloads/latest/python3.13/) on Windows 10)
 
 ---
+
+
 
 ## Backups
 
@@ -74,10 +87,15 @@ Backups are created **next to the save file being edited**, with the same base n
 
 ---
 
+## Changelog
+
+### 1.1
+* Now also supports changing the bonus for each perk individually.
+
 ## Dev stuff
 
-<details>
-<summary>Project files overview</summary>
+Project files overview
+
 
 | File           | Role                                         |
 | -------------- | -------------------------------------------- |
@@ -86,16 +104,16 @@ Backups are created **next to the save file being edited**, with the same base n
 | `savefile.py`  | Read, write, and back up the save file       |
 | `variables.py` | Perk names and other savefile variable names |
 
-</details>
-
 ---
+
+
 
 ## Disclaimer
 
 First off let me repeat from earlier:
 The value here is probably more for me as a python exercise than for you as an impressive tool. **:shrug:**
 
-This is an unofficial fanmade tool, not affiliated with the Synthetik developers. Editing save files can break progression or cause unexpected behaviour. This tool is admittedly very limited in scope, so any breakage would likely be easy to fix for someone who didn't really need this tool to begin with, other than for convenience). Use at your own risk, and keep backups.
+This is an unofficial fanmade tool, not affiliated with the Synthetik developers. Editing save files can break progression or cause unexpected behaviour. This tool is admittedly very limited in scope, so any breakage would likely be easy to fix for someone who didn't really need this tool to begin with, except for convenience. Use at your own risk, and keep backups.
 
 ### Versions used during testing
 
@@ -104,6 +122,8 @@ This is an unofficial fanmade tool, not affiliated with the Synthetik developers
 - OS: Windows 10
 
 ---
+
+
 
 ## License
 

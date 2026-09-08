@@ -7,6 +7,7 @@ from pathlib import Path
 import edits
 import savefile
 import variables
+import sys
 
 
 DEFAULT_SAVE_NAME = "Save.sav"
@@ -103,15 +104,16 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
 
     if data_value is not None:
         current_data = savefile.format_display_value(data_value)
-        data_option = f"3. Data: Set to 1000 (current: {current_data})"
+        data_option = f"Data: Set to 1000 (current: {current_data})"
     else:
-        data_option = "3. Data: Set to 1000 (current: unknown)"
+        data_option = "Data: Set to 1000 (current: unknown)"
 
     return {
-        "1": f"1. Perks: Set all class perks' daily boost to chosen value",
-        "2": "2. Perks: Show current class perks' daily boosts",
-        "3": data_option,
-        "4": "4. Choose a different save file",
+        "1": "1. Perks: Set all class perks' daily boost to chosen value",
+        "2": "2. Perks: Set single class perk's daily boost to chosen value",
+        "3": "3. Perks: Show current class perks' daily boosts",
+        "4": f"4. {data_option}",
+        "5": "5. Choose a different save file",
         "0": "0. Exit",
     }
 
@@ -124,7 +126,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "0"):
+    for key in ("1", "2", "3", "4", "5", "0"):
         print(options[key])
     print()
 
@@ -157,10 +159,22 @@ def run_menu(save_path: Path) -> Path | None:
                     lambda lines: edits.set_all_perk_daily_module_boosts(lines, perk_value),
                 )
         elif choice == "2":
-            edits.show_perk_daily_module_boosts(save_path)
+            lines = savefile.read_lines(save_path)
+            perk_id = edits.select_single_perk_id(savefile.get_main_perk_values(lines))
+            if perk_id is not None:
+                perk_value = ask_perk_boost_value()
+                if perk_value is not None:
+                    edits.apply_edit(
+                        save_path,
+                        lambda lines: edits.set_single_perk_daily_module_boost(
+                            lines, perk_id, perk_value
+                        ),
+                    )
         elif choice == "3":
-            edits.apply_edit(save_path, edits.set_data_to_1000)
+            edits.show_perk_daily_module_boosts(save_path)
         elif choice == "4":
+            edits.apply_edit(save_path, edits.set_data_to_1000)
+        elif choice == "5":
             new_path = ask_save_path()
             if validate_save_path(new_path):
                 return new_path
@@ -173,7 +187,15 @@ def main() -> None:
     print("Welcome to Egren's Synthetik Save Editor!")
     print()
 
-    save_path = ask_save_path()
+    if len(sys.argv) > 1:
+        save_path = resolve_user_path(sys.argv[1])
+
+        if save_path is None:
+            print(f"Invalid save path: {sys.argv[1]}")
+            sys.exit(1)
+    else:
+        save_path = ask_save_path()
+
     if not validate_save_path(save_path):
         return
 
@@ -183,7 +205,6 @@ def main() -> None:
             print("Goodbye!")
             break
         save_path = result
-
 
 if __name__ == "__main__":
     main()

@@ -97,3 +97,8 @@ def main_perk_ids() -> list[str]:
 def main_perk_variable_names() -> list[str]:
     """Build the full save variable names for all 62 normal perks."""
     return [f"{PERK_VARIABLE_PREFIX}{perk_id}" for perk_id in main_perk_ids()]
+
+
+def perk_variable_name(perk_id: str) -> str:
+    """Build the save variable name for one perk ID."""
+    return f"{PERK_VARIABLE_PREFIX}{perk_id}"

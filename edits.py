@@ -37,6 +37,64 @@ def set_all_perk_daily_module_boosts(lines: list[str], value: str) -> tuple[list
     return updated_lines, summary
 
 
+def set_single_perk_daily_module_boost(
+    lines: list[str], perk_id: str, value: str
+) -> tuple[list[str], str]:
+    """Set one normal perk's daily module boost to the given value."""
+    variable_name = variables.perk_variable_name(perk_id)
+    formatted_value = savefile.format_display_value(value)
+    updated_lines, found = savefile.set_variable(lines, variable_name, value)
+
+    if found:
+        summary = f"Set {perk_id} to {formatted_value}."
+    else:
+        summary = f"Variable '{variable_name}' was not found in the save file."
+
+    return updated_lines, summary
+
+
+def select_single_perk_id(perk_values: dict[str, str | None]) -> str | None:
+    """Let the user pick one perk by class, then by name."""
+    class_options = {str(index): class_name for index, (class_name, _) in enumerate(variables.PERK_CLASSES, start=1)}
+    class_options["0"] = "Cancel"
+
+    print()
+    print("Select a class:")
+    print()
+    for key in ("1", "2", "3", "4", "0"):
+        print(f"{key}. {class_options[key]}")
+    print()
+
+    class_choice = input("Choose a class: ").strip()
+    if class_choice not in class_options or class_choice == "0":
+        return None
+
+    class_name = class_options[class_choice]
+    perk_ids = next(perk_ids for name, perk_ids in variables.PERK_CLASSES if name == class_name)
+    rows = _format_perk_rows(perk_values, perk_ids)
+    name_width = _perk_name_width()
+
+    perk_options = {str(index): perk_id for index, (perk_id, _) in enumerate(rows, start=1)}
+    perk_options["0"] = "Back"
+
+    print()
+    print(class_name)
+    for key in [str(index) for index in range(1, len(rows) + 1)] + ["0"]:
+        if key == "0":
+            print(f"0. {perk_options[key]}")
+        else:
+            perk_id = perk_options[key]
+            display_value = next(value for pid, value in rows if pid == perk_id)
+            print(f"{key}. {perk_id.ljust(name_width)} : {display_value}")
+    print()
+
+    perk_choice = input("Choose a perk: ").strip()
+    if perk_choice not in perk_options or perk_choice == "0":
+        return None
+
+    return perk_options[perk_choice]
+
+
 def show_perk_daily_module_boosts(save_path: Path) -> None:
     """Display how many normal perks currently have each boost value."""
     lines = savefile.read_lines(save_path)
