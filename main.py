@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import edits
+import save_paths
 import savefile
 import variables
 import sys
 
 
-DEFAULT_SAVE_NAME = "Save.sav"
+DEFAULT_SAVE_NAME = save_paths.DEFAULT_SAVE_NAME
 
 
 def resolve_user_path(user_input: str) -> Path | None:
@@ -40,14 +41,20 @@ def resolve_user_path(user_input: str) -> Path | None:
 
 
 def ask_save_path() -> Path:
-    """Ask the user for a save file path, or use the default in the current folder."""
-    user_input = input(
+    """Ask the user for a save file path, pre-filled with a sensible default."""
+    prefill = save_paths.prefilled_save_path()
+    user_input = save_paths.input_prefilled(
         "Enter the path to your save file or its folder\n"
-        "(leave empty to use Save.sav in the current folder)\n"
-    ).strip()
+        "(Press Enter to accept. To auto-detect instead, clear the line below, then press Enter.)\n",
+        prefill,
+    )
 
+    if user_input is None:
+        return save_paths.best_candidate_save_path()
+
+    user_input = user_input.strip()
     if not user_input:
-        return Path.cwd() / DEFAULT_SAVE_NAME
+        return save_paths.best_candidate_save_path()
 
     save_path = resolve_user_path(user_input)
 
@@ -182,6 +189,11 @@ def run_menu(save_path: Path) -> Path | None:
             return None
 
 
+def remember_save_path(save_path: Path) -> None:
+    """Store the save path for the next launch."""
+    save_paths.save_last_save_path(save_path)
+
+
 def main() -> None:
     print()
     print("Welcome to Egren's Synthetik Save Editor!")
@@ -192,12 +204,20 @@ def main() -> None:
 
         if save_path is None:
             print(f"Invalid save path: {sys.argv[1]}")
+            save_paths.wait_before_exit()
             sys.exit(1)
-    else:
-        save_path = ask_save_path()
 
-    if not validate_save_path(save_path):
-        return
+        if not validate_save_path(save_path):
+            save_paths.wait_before_exit()
+            sys.exit(1)
+
+        remember_save_path(save_path)
+    else:
+        while True:
+            save_path = ask_save_path()
+            if validate_save_path(save_path):
+                remember_save_path(save_path)
+                break
 
     while True:
         result = run_menu(save_path)
@@ -205,6 +225,7 @@ def main() -> None:
             print("Goodbye!")
             break
         save_path = result
+        remember_save_path(save_path)
 
 if __name__ == "__main__":
     main()

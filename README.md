@@ -52,7 +52,7 @@ python main.py
 
    `C:\Users\<YourUsername>\AppData\Local\Synthetik\Save.sav`
 
-   When the tool starts, you can paste the **full path to the file**, or the **folder containing it** (it will look for `Save.sav` inside). Leave empty to use `Save.sav` in the folder you're running from. You can also pass a path on the command line, e.g. `py main.py "C:\Users\<YourUsername>\AppData\Local\Synthetik"`.
+   When the tool starts, the path prompt is **pre-filled** with your last used path (if it still exists) or the usual Windows location. Press **Enter** to accept it. To **auto-detect** a different save file instead, clear the line and press **Enter** again. You can also pass a path on the command line, e.g. `py main.py "C:\Users\<YourUsername>\AppData\Local\Synthetik"`.
 
 ---
 
@@ -119,6 +119,7 @@ Project files overview
 | -------------- | -------------------------------------------- |
 | `main.py`      | Starts the program and shows the menu        |
 | `edits.py`     | Edit actions (perks, data, listings)         |
+| `save_paths.py` | Find and remember save file locations          |
 | `savefile.py`  | Read, write, and back up the save file       |
 | `variables.py` | Perk names and other savefile variable names |
 
