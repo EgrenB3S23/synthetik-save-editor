@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import edits
+import loadouts
 import save_paths
 import savefile
 import variables
@@ -121,6 +122,7 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
         "3": "3. Perks: Show current class perks' daily boosts",
         "4": f"4. {data_option}",
         "5": "5. Choose a different save file",
+        "6": "6. Loadouts: View loadouts, save or load presets",
         "0": "0. Exit",
     }
 
@@ -133,7 +135,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "5", "0"):
+    for key in ("1", "2", "3", "4", "5", "6", "0"):
         print(options[key])
     print()
 
@@ -185,6 +187,8 @@ def run_menu(save_path: Path) -> Path | None:
             new_path = ask_save_path()
             if validate_save_path(new_path):
                 return new_path
+        elif choice == "6":
+            loadouts.run_loadout_menu(save_path)
         elif choice == "0":
             return None
 

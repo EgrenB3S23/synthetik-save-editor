@@ -2,6 +2,9 @@
 Save.sav
 *.backup.*.sav
 
+# Personal loadout presets
+loadouts/
+
 # Personal / local notes
 TODO.md
 .scratch
