@@ -18,6 +18,8 @@ A simple command-line tool for editing **Synthetik** (Synthetik 1) save files on
 
 Same menus and backups as the Python version. Windows 10/11, 64-bit.
 
+GUI: `synthetik-save-editor.exe --gui`, or pick **Open graphical editor** from the menu.
+
 ---
 
 ## Or run from source (Python)
@@ -38,9 +40,12 @@ python main.py
 
 ## Current features
 
-- **Change daily module bonuses** to any number.
+- **Change daily module bonuses** to any number (all 62, one perk, or a random roll from `count:value` pairs).
 - **View current perk boosts**.
-- **Set 'data' to 1000**.
+- **Set data** (the `currency` resource) to a chosen value.
+- **Loadout presets**: save one subclass's slots + tokens to a file in `loadouts/`, load it back, rename, delete.
+- **Graphical editor** (`py main.py --gui`): class card, perk boosts, data, presets, backups.
+- **Restore a backup** of the save the tool created.
 
 ---
 
@@ -82,6 +87,12 @@ py main.py
 
 Follow the on-screen menu. On some systems the command may be `python main.py` instead of `py main.py`.
 
+To open the window directly:
+
+```console
+py main.py --gui
+```
+
 Tip: make a *.bat file to avoid having to provide the savefile path every time you run the tool.
 Example:
 ```bat
@@ -103,11 +114,21 @@ Every time an edit is applied, the tool first makes a copy of the unedited savef
 
 `Save.backup.20260721_203812.sav`
 
-Backups are created **next to the save file being edited**, with the same base name plus a timestamp. You can keep several backups at once.
+Backups are created **next to the save file being edited**, with the same base name plus a timestamp. You can keep several backups at once. The CLI and the GUI can restore one of those files over the live save (the live file is backed up first).
 
 ---
 
 ## Changelog
+
+### 1.2 (in progress, not a GitHub release yet)
+
+* Loadout presets for one subclass at a time (slots + tokens).
+* Graphical editor: loadout card, perk boosts, data, presets, backups.
+* Perk boost randomize from a `count:value` list (reroll / accept / cancel).
+* Restore a timestamped backup.
+* Data can be set to any number, not only 1000.
+* Token view shows item/weapon names from `obj_itemN` / `obj_weapon_*_N`.
+* CLI: edit a single loadout slot from a filtered list.
 
 ### 1.1
 * Now also supports changing the bonus for each perk individually.
@@ -120,6 +141,9 @@ Project files overview
 | File           | Role                                         |
 | -------------- | -------------------------------------------- |
 | `main.py`      | Starts the program and shows the menu        |
+| `gui.py`       | tkinter window (loadout / perks / data / presets / backups) |
+| `loadouts.py`  | Read/write subclass loadouts and preset files |
+| `catalog.py`   | Display names and loadout-pool lists         |
 | `edits.py`     | Edit actions (perks, data, listings)         |
 | `save_paths.py` | Find and remember save file locations          |
 | `savefile.py`  | Read, write, and back up the save file       |

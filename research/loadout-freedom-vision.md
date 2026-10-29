@@ -1,7 +1,8 @@
 # Loadout freedom — vision
 
-Status: **idea / research**. Nothing here is implemented. This document captures the goal and the
-open questions so we can investigate together before writing code.
+Status: **partial**. GUI restriction radios cover Vanilla / Omniclass / Omnislots for the loadout
+card (session-only). Uber Omniclass (bonus swap) and Unlimited (non-pool objects) wait on
+in-game tests. This document captures the rest of the goal and the open questions.
 
 ## The idea
 
@@ -80,6 +81,9 @@ Ordered roughly by how much they decide what's possible:
 5. **Class level bonuses (level 2):** where are the lvl 5/10/15/20/25/prestige/insanity bonus
    choices stored? Candidates: `scl`, `sma`, `sta`, `sad`, `ski` per subclass (5 values per
    subclass) and `pst`/`subclasspst` (prestige). Change one in-game and diff the save.
+   Overnight observation: all eight used subclasses share `scl=2` and `1` for the other four,
+   unused rows are 0 — likely option indices, not levels. Still need a one-change diff to
+   map letters to the bonus track.
 6. **Non-pool items and weapons (level 4):** does a slot accept an item or weapon that has no
    `tunlock_` entry? Does the token system need a matching entry?
 7. **Slot 8 and the slot-5 "random perk":** what unlocks slot 8, and can we fill it?
@@ -87,8 +91,9 @@ Ordered roughly by how much they decide what's possible:
 
 ## How we'll investigate
 
-- `.scratch/save_diff.py` (local, not committed) snapshots the save and lists every changed
-  variable after an in-game change. One change per test.
+- `research/save_diff.py` snapshots the save into `.scratch/save_snapshot.json` and lists every
+  changed variable after an in-game change. One change per test:
+  `py research/save_diff.py snapshot` then `py research/save_diff.py`.
 - `research/extract_gamedata.py` regenerates `research/gamedata/*.json` from the game files and a
   save. Name guesses are heuristic; confirmed names should be filled in by hand as we verify them.
 - Keep test results in this file, under a "Findings" section, so the restriction levels can be
@@ -96,4 +101,11 @@ Ordered roughly by how much they decide what's possible:
 
 ## Findings
 
-(none yet)
+- Item token values look like the `N` in `obj_itemN_*` (display-only; not in-game confirmed).
+- Weapon token values look like the trailing `N` in `obj_weapon_*_N` (e.g. 11 → REP_11).
+  `wunlock#` is **not** an object index (looks like a usage stat). Suffix 80 is shared by
+  AR15_80 and ROD_80.
+- GUI restriction radios are session-only (Vanilla / Omniclass / Omnislots). Not stored in
+  presets. Uber Omniclass (class bonus swap) and Unlimited (non-pool objects) are not in the
+  GUI until in-game tests land.
+- `slot#perkgroup#` / `slot#power#` stay out of presets.

@@ -125,6 +125,74 @@ def subsequence_match(query: str, text: str) -> bool:
     return True
 
 
+def item_id_for_number(number: int) -> str | None:
+    """obj_item id whose number matches a token index, if one exists."""
+    for entry in _entries("items.json", "items"):
+        if entry.get("item_number") == number and entry.get("id"):
+            return str(entry["id"])
+    return None
+
+
+def _suffix_number(object_id: str) -> int | None:
+    suffix = object_id.rsplit("_", 1)[-1]
+    return int(suffix) if suffix.isdigit() else None
+
+
+def weapon_id_for_number(number: int) -> str | None:
+    """obj_weapon id whose trailing number matches a token index.
+
+    Observed: token 11 is obj_weapon_REP_11, matching spr_weapon11_REP_icon.
+    If two objects share a number, prefer one with a name guess.
+    """
+    matches = [
+        entry
+        for entry in _entries("weapons.json", "weapons")
+        if entry.get("id") and _suffix_number(str(entry["id"])) == number
+    ]
+    if not matches:
+        return None
+    matches.sort(key=lambda entry: (not entry.get("name_guess"), not entry.get("in_loadout_pool"), entry["id"]))
+    return str(matches[0]["id"])
+
+
+def slot_kind(slot: int) -> str:
+    """Which pool a loadout slot usually holds."""
+    if slot == 9:
+        return "weapons"
+    if slot in (1, 3, 4, 5):
+        return "items"
+    return "perks"
+
+
+def options_for_slot(slot: int, class_index: int, restriction: str = "Omniclass") -> list[str]:
+    """Candidate object ids for one slot. restriction: Vanilla / Omniclass / Omnislots."""
+    if restriction == "Omnislots":
+        ids = pool_ids("weapons") + pool_ids("items") + pool_ids("perks")
+    elif slot == 0:
+        ids = sorted(class_core_ids())
+    elif slot_kind(slot) == "weapons":
+        ids = pool_ids("weapons")
+    elif slot_kind(slot) == "items":
+        ids = pool_ids("items")
+    else:
+        ids = class_perk_ids(class_index)
+        if restriction != "Vanilla":
+            for perk_id in pool_ids("perks"):
+                if perk_id not in class_core_ids() and perk_id not in ids:
+                    ids.append(perk_id)
+
+    if slot in (1, 2, 4, 5, 6, 7, 8):
+        ids = [RANDOM_MODULE_ID] + ids
+
+    seen: set[str] = set()
+    unique_ids = []
+    for object_id in ids:
+        if object_id and object_id not in seen:
+            seen.add(object_id)
+            unique_ids.append(object_id)
+    return unique_ids
+
+
 def pool_ids(kind: str) -> list[str]:
     """Starter-pool object ids. kind is perks, items, or weapons."""
     file_name = {"perks": "perks.json", "items": "items.json", "weapons": "weapons.json"}[kind]

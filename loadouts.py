@@ -284,8 +284,35 @@ def display_slot(value: str | None) -> str:
     return value
 
 
-def display_tokens(values: list[str | None]) -> str:
-    placed = [savefile.format_display_value(value) for value in values if value is not None]
+def display_token_value(family: str, value: str | None) -> str:
+    """Token index plus a name when the index matches obj_itemN or obj_weapon_*_N."""
+    if value is None:
+        return "(none)"
+    shown = savefile.format_display_value(value)
+    try:
+        number = int(float(value))
+    except ValueError:
+        return shown
+    import catalog
+
+    if family.startswith("i"):
+        object_id = catalog.item_id_for_number(number)
+    elif family.startswith("w"):
+        object_id = catalog.weapon_id_for_number(number)
+    else:
+        return shown
+    if not object_id:
+        return shown
+    name = catalog.display_name(object_id)
+    return f"{shown} {name}"
+
+
+def display_tokens(values: list[str | None], family: str | None = None) -> str:
+    placed = []
+    for value in values:
+        if value is None:
+            continue
+        placed.append(display_token_value(family or "", value) if family else savefile.format_display_value(value))
     return ", ".join(placed) if placed else "(none)"
 
 
@@ -298,7 +325,11 @@ def print_comparison(current: dict, preset: dict) -> int:
         )
     for family, (_, description) in TOKEN_FAMILIES.items():
         rows.append(
-            (description, display_tokens(current["tokens"][family]), display_tokens(preset["tokens"][family]))
+            (
+                description,
+                display_tokens(current["tokens"][family], family),
+                display_tokens(preset["tokens"][family], family),
+            )
         )
 
     label_width = max(len(label) for label, _, _ in rows)
@@ -314,6 +345,7 @@ def print_comparison(current: dict, preset: dict) -> int:
 
     print()
     print("Token numbers are the weapon/item each token is placed on. * = will change.")
+    print("Item tokens also show the matching obj_itemN name when known.")
     return changes
 
 
@@ -326,9 +358,10 @@ def print_loadout(loadout: dict) -> None:
     print()
     family_width = max(len(description) for _, description in TOKEN_FAMILIES.values())
     for family, (_, description) in TOKEN_FAMILIES.items():
-        print(f"{description:{family_width}} : {display_tokens(loadout['tokens'][family])}")
+        print(f"{description:{family_width}} : {display_tokens(loadout['tokens'][family], family)}")
     print()
     print("Token numbers are the weapon/item each token is placed on.")
+    print("Names come from obj_itemN / obj_weapon_*_N when that number is unique enough.")
 
 
 def select_subclass(lines: list[str], allow_all: bool = False) -> tuple[int, int] | str | None:
@@ -467,6 +500,86 @@ def list_presets_flow() -> None:
             print(f"{preset['subclass']} : {preset['name']}  (weapon: {weapon}, file: {path.name})")
 
 
+SLOT_EDIT_MATCH_LIMIT = 40
+
+
+def edit_slot_flow(save_path: Path) -> None:
+    """Change one loadout slot from a filtered list (Omniclass pool)."""
+    import catalog
+
+    lines = savefile.read_lines(save_path)
+    selection = select_subclass(lines)
+    if selection is None:
+        return
+    class_index, subclass_index = selection
+    loadout = read_loadout(lines, class_index, subclass_index)
+    print()
+    print_loadout(loadout)
+
+    slot_text = input("Slot number to edit (0-9): ").strip()
+    try:
+        slot = int(slot_text)
+    except ValueError:
+        print("Not a number. Nothing was changed.")
+        return
+    if slot not in range(SLOT_COUNT):
+        print("Slot must be 0-9. Nothing was changed.")
+        return
+
+    current = loadout["slots"][slot]
+    print()
+    print(f"Current slot {slot}: {catalog.labeled(current, multiline=False)}")
+    query = input("Filter (empty lists the first matches): ").strip()
+    options = catalog.options_for_slot(slot, class_index, "Omniclass")
+    shown: list[str] = []
+    for object_id in options:
+        if query and not catalog.subsequence_match(query, catalog.entry_search_text(object_id)):
+            continue
+        shown.append(object_id)
+        if len(shown) >= SLOT_EDIT_MATCH_LIMIT:
+            break
+
+    if not shown:
+        print("No matches. Nothing was changed.")
+        return
+
+    print()
+    for index, object_id in enumerate(shown, start=1):
+        mark = "*" if object_id == current else " "
+        print(f"{index:2}. {mark} {catalog.labeled(object_id, multiline=False)}")
+    if len(shown) == SLOT_EDIT_MATCH_LIMIT:
+        print(f"Showing first {SLOT_EDIT_MATCH_LIMIT} matches, keep typing to narrow down.")
+    print(" 0. Cancel")
+    print()
+    choice = input("Choose a value: ").strip()
+    if choice == "0" or not choice.isdigit() or int(choice) not in range(1, len(shown) + 1):
+        print("Nothing was changed.")
+        return
+
+    new_value = shown[int(choice) - 1]
+    if new_value == current:
+        print("Already that value. Nothing to do.")
+        return
+
+    name = subclass_name(class_index, subclass_index)
+    print()
+    print(f"{name} slot {slot}: {catalog.labeled(current, multiline=False)}")
+    print(f"                 -> {catalog.labeled(new_value, multiline=False)}")
+    print("Make sure Synthetik is closed.")
+    if not ask_yes_no("Write this change"):
+        print("No changes were made.")
+        return
+
+    preset = build_preset(lines, class_index, subclass_index, "slot-edit")
+    preset["slots"] = list(loadout["slots"])
+    preset["slots"][slot] = new_value
+    problem = validate_preset(preset)
+    if problem:
+        print(f"Could not write: {problem}")
+        return
+    edits.apply_edit(save_path, lambda lines: apply_preset(lines, preset))
+
+
 def view_save_loadout_flow(save_path: Path) -> None:
     lines = savefile.read_lines(save_path)
     selection = select_subclass(lines, allow_all=True)
@@ -497,6 +610,59 @@ def view_preset_flow() -> None:
     print_loadout(preset)
 
 
+def delete_preset_flow() -> None:
+    chosen = choose_preset()
+    if chosen is None:
+        return
+
+    path, preset = chosen
+    print()
+    print(f"Delete '{preset['name']}' ({path.name})?")
+    if not ask_yes_no("Delete this preset file"):
+        print("Nothing was deleted.")
+        return
+    path.unlink()
+    print(f"Deleted {path.name}")
+
+
+def rename_preset(path: Path, preset: dict, new_name: str) -> Path:
+    """Change a preset's display name and move the file if the slug changes."""
+    preset = dict(preset)
+    preset["name"] = new_name
+    problem = validate_preset(preset)
+    if problem:
+        raise ValueError(problem)
+
+    new_path = path.with_name(preset_filename(preset))
+    if new_path != path and new_path.exists():
+        raise FileExistsError(new_path.name)
+    write_preset(preset, new_path)
+    if new_path != path:
+        path.unlink()
+    return new_path
+
+
+def rename_preset_flow() -> None:
+    chosen = choose_preset()
+    if chosen is None:
+        return
+
+    path, preset = chosen
+    new_name = input(f"New name for '{preset['name']}': ").strip()
+    if not new_name:
+        print("No name entered. Nothing was renamed.")
+        return
+    try:
+        new_path = rename_preset(path, preset, new_name)
+    except FileExistsError as error:
+        print(f"A preset file already uses that name: {error}")
+        return
+    except ValueError as error:
+        print(f"Could not rename: {error}")
+        return
+    print(f"Renamed to {new_path.name}")
+
+
 def run_loadout_menu(save_path: Path) -> None:
     options = {
         "1": "1. Save a subclass loadout to a preset",
@@ -504,6 +670,9 @@ def run_loadout_menu(save_path: Path) -> None:
         "3": "3. List saved presets",
         "4": "4. View a loadout in the save file",
         "5": "5. View a preset file",
+        "6": "6. Rename a preset",
+        "7": "7. Delete a preset",
+        "8": "8. Edit a single loadout slot",
         "0": "0. Back to main menu",
     }
 
@@ -511,7 +680,7 @@ def run_loadout_menu(save_path: Path) -> None:
         print()
         print("=== Loadouts ===")
         print()
-        for key in ("1", "2", "3", "4", "5", "0"):
+        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "0"):
             print(options[key])
         print()
 
@@ -533,5 +702,11 @@ def run_loadout_menu(save_path: Path) -> None:
             view_save_loadout_flow(save_path)
         elif choice == "5":
             view_preset_flow()
+        elif choice == "6":
+            rename_preset_flow()
+        elif choice == "7":
+            delete_preset_flow()
+        elif choice == "8":
+            edit_slot_flow(save_path)
         elif choice == "0":
             return

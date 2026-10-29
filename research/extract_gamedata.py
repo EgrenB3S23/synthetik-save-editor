@@ -42,8 +42,8 @@ CLASS_GROUPS = {
 # ---------------------------------------------------------------- data.win
 
 
-def read_datawin(path: Path) -> tuple[list[str], list[str]]:
-    """Return (object names, strings) from a GameMaker data.win."""
+def read_datawin(path: Path) -> tuple[list[str], list[str], list[str]]:
+    """Return (object names, strings, sprite names) from a GameMaker data.win."""
     with path.open("rb") as f:
         magic, form_size = struct.unpack("<4sI", f.read(8))
         if magic != b"FORM":
@@ -52,7 +52,7 @@ def read_datawin(path: Path) -> tuple[list[str], list[str]]:
         chunks = {}
         while f.tell() < 8 + form_size:
             name, size = struct.unpack("<4sI", f.read(8))
-            chunks[name.decode()] = f.tell()
+            chunks[name.decode()] = (f.tell(), size)
             f.seek(size, 1)
 
         def pointers(offset: int) -> list[int]:
@@ -66,18 +66,24 @@ def read_datawin(path: Path) -> tuple[list[str], list[str]]:
             return f.read(length).decode("utf-8", errors="replace")
 
         strings = []
-        for pointer in pointers(chunks["STRG"]):
+        for pointer in pointers(chunks["STRG"][0]):
             f.seek(pointer)
             (length,) = struct.unpack("<I", f.read(4))
             strings.append(f.read(length).decode("utf-8", errors="replace"))
 
         objects = []
-        for pointer in pointers(chunks["OBJT"]):
+        for pointer in pointers(chunks["OBJT"][0]):
             f.seek(pointer)
             (name_pointer,) = struct.unpack("<I", f.read(4))
             objects.append(string_at(name_pointer))
 
-    return objects, strings
+        sprites = []
+        for pointer in pointers(chunks["SPRT"][0]):
+            f.seek(pointer)
+            (name_pointer,) = struct.unpack("<I", f.read(4))
+            sprites.append(string_at(name_pointer))
+
+    return objects, strings, sprites
 
 
 # ---------------------------------------------------------------- save
@@ -259,7 +265,7 @@ def main() -> None:
     data_win = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_DATA_WIN
     save_path = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_SAVE
 
-    objects, strings = read_datawin(data_win)
+    objects, strings, sprites = read_datawin(data_win)
     save = read_save(save_path)
     equipped = equipped_map(save)
     names = english_names(strings)
@@ -347,9 +353,28 @@ def main() -> None:
     }
     write_json("classes.json", classes)
 
+    relevant = [
+        name
+        for name in sprites
+        if re.search(r"(item|weapon|perk|pistol|module)", name, re.I)
+    ]
+    write_json(
+        "sprites.json",
+        {
+            "meta": {
+                **meta,
+                "note": "Sprite *names* from the SPRT chunk. Pixel data lives in TXTR "
+                "(~400MB) and is not exported. Icons for the GUI would need a texture-page decoder.",
+                "sprite_count": len(sprites),
+            },
+            "names_matching_item_weapon_perk": relevant,
+        },
+    )
+
     print(
         f"{len(perks)} perks, {len(items)} items, {len(weapons)} weapons, "
-        f"{len(artefacts)} artefacts, {len(pool_talents)} talents in pool"
+        f"{len(artefacts)} artefacts, {len(pool_talents)} talents in pool, "
+        f"{len(sprites)} sprites ({len(relevant)} name-matched)"
     )
 
 

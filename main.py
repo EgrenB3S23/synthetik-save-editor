@@ -99,6 +99,87 @@ def ask_perk_boost_value() -> str | None:
     return user_input
 
 
+def ask_data_value() -> str | None:
+    """Ask for a data (currency) value. Empty input uses 1000."""
+    user_input = input("Enter data value (leave empty for 1000): ").strip()
+    if not user_input:
+        return "1000"
+    try:
+        float(user_input)
+    except ValueError:
+        print("Invalid number. No changes were made.")
+        return None
+    return user_input
+
+
+def randomize_perk_boosts_flow(save_path: Path) -> None:
+    """Roll perk boosts from a count:value list, then reroll / accept / cancel."""
+    print()
+    print(f"Enter count:value pairs for the {edits.PERK_COUNT} perks.")
+    print("Example: 10:1.6 20:1.25   (leftover perks get 1)")
+    user_input = input(
+        f"Distribution (leave empty for {edits.DEFAULT_BOOST_DISTRIBUTION}): "
+    ).strip()
+    parsed = edits.parse_boost_distribution(user_input or edits.DEFAULT_BOOST_DISTRIBUTION)
+    if isinstance(parsed, str):
+        print(parsed)
+        return
+
+    assigned = edits.roll_perk_boosts(parsed)
+    while True:
+        print()
+        print(edits.format_roll_preview(assigned))
+        print()
+        print("1. Reroll")
+        print("2. Accept and write to save")
+        print("0. Cancel")
+        print()
+        choice = input("Choose an option: ").strip()
+        if choice == "1":
+            assigned = edits.roll_perk_boosts(parsed)
+        elif choice == "2":
+            edits.apply_edit(save_path, lambda lines: edits.set_perk_boosts(lines, assigned))
+            return
+        elif choice == "0":
+            print("No changes were made.")
+            return
+        else:
+            print("Invalid choice. Please enter a number.")
+
+
+def restore_backup_flow(save_path: Path) -> None:
+    """Pick a timestamped backup next to the save and copy it over the live file."""
+    backups = savefile.list_backups(save_path)
+    print()
+    print(f"Backups next to: {save_path}")
+    if not backups:
+        print("No backups found.")
+        return
+
+    options = {str(index): path for index, path in enumerate(backups, start=1)}
+    print()
+    for key, path in options.items():
+        stamp = savefile.backup_stamp(path) or "?"
+        print(f"{key}. {path.name}  ({stamp})")
+    print("0. Cancel")
+    print()
+    choice = input("Choose a backup to restore: ").strip()
+    if choice == "0" or choice not in options:
+        print("Nothing was restored.")
+        return
+
+    backup_path = options[choice]
+    print()
+    print(f"This replaces the live save with {backup_path.name}.")
+    print("The current save will be backed up first.")
+    if input("Restore this backup? (Y/N): ").strip().upper() != "Y":
+        print("Nothing was restored.")
+        return
+
+    safety_copy = savefile.restore_backup(save_path, backup_path)
+    print(f"Restored {backup_path.name}. Previous save copied to {safety_copy.name}.")
+
+
 def get_data_current_value(save_path: Path) -> str | None:
     """Read the current data value from the save file."""
     lines = savefile.read_lines(save_path)
@@ -112,18 +193,20 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
 
     if data_value is not None:
         current_data = savefile.format_display_value(data_value)
-        data_option = f"Data: Set to 1000 (current: {current_data})"
+        data_option = f"Data: Set to a chosen value (current: {current_data})"
     else:
-        data_option = "Data: Set to 1000 (current: unknown)"
+        data_option = "Data: Set to a chosen value (current: unknown)"
 
     return {
         "1": "1. Perks: Set all class perks' daily boost to chosen value",
         "2": "2. Perks: Set single class perk's daily boost to chosen value",
         "3": "3. Perks: Show current class perks' daily boosts",
-        "4": f"4. {data_option}",
-        "5": "5. Choose a different save file",
-        "6": "6. Loadouts: View loadouts, save or load presets",
-        "7": "7. Loadouts: Open graphical editor (prototype)",
+        "4": "4. Perks: Randomize daily boosts from a count:value list",
+        "5": f"5. {data_option}",
+        "6": "6. Choose a different save file",
+        "7": "7. Loadouts: View loadouts, save or load presets",
+        "8": "8. Loadouts: Open graphical editor",
+        "9": "9. Restore a backup of this save",
         "0": "0. Exit",
     }
 
@@ -136,7 +219,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "5", "6", "7", "0"):
+    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"):
         print(options[key])
     print()
 
@@ -183,17 +266,23 @@ def run_menu(save_path: Path) -> Path | None:
         elif choice == "3":
             edits.show_perk_daily_module_boosts(save_path)
         elif choice == "4":
-            edits.apply_edit(save_path, edits.set_data_to_1000)
+            randomize_perk_boosts_flow(save_path)
         elif choice == "5":
+            data_value = ask_data_value()
+            if data_value is not None:
+                edits.apply_edit(save_path, lambda lines: edits.set_data(lines, data_value))
+        elif choice == "6":
             new_path = ask_save_path()
             if validate_save_path(new_path):
                 return new_path
-        elif choice == "6":
-            loadouts.run_loadout_menu(save_path)
         elif choice == "7":
+            loadouts.run_loadout_menu(save_path)
+        elif choice == "8":
             import gui
 
             gui.open_loadout_editor(save_path)
+        elif choice == "9":
+            restore_backup_flow(save_path)
         elif choice == "0":
             return None
 

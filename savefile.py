@@ -14,17 +14,54 @@ import variables
 SAVE_LINE_PATTERN = re.compile(r'^(\s*)(.+?)\s*=\s*"(.*)"\s*$')
 
 
+BACKUP_STAMP_PATTERN = re.compile(r"\.backup\.(\d{8}_\d{6})(?:_\d+)?$")
+
+
 def backup_savefile(save_path: Path) -> Path:
     """Copy the save file before editing it.
 
     Creates a file like: Save.backup.20260721_191530.sav
+    If that name is already taken (two edits in the same second), adds _2, _3, …
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = save_path.with_name(
         f"{save_path.stem}.backup.{timestamp}{save_path.suffix}"
     )
+    extra = 2
+    while backup_path.exists():
+        backup_path = save_path.with_name(
+            f"{save_path.stem}.backup.{timestamp}_{extra}{save_path.suffix}"
+        )
+        extra += 1
     shutil.copy2(save_path, backup_path)
     return backup_path
+
+
+def list_backups(save_path: Path) -> list[Path]:
+    """Timestamped backups next to this save, newest first."""
+    suffix = save_path.suffix
+    prefix = f"{save_path.stem}.backup."
+    backups = [
+        path
+        for path in save_path.parent.glob(f"{prefix}*{suffix}")
+        if path.is_file() and BACKUP_STAMP_PATTERN.search(path.stem)
+    ]
+    return sorted(backups, key=lambda path: path.stat().st_mtime, reverse=True)
+
+
+def backup_stamp(path: Path) -> str | None:
+    """Return YYYYMMDD_HHMMSS from a backup file name, if it matches."""
+    match = BACKUP_STAMP_PATTERN.search(path.stem)
+    return match.group(1) if match else None
+
+
+def restore_backup(save_path: Path, backup_path: Path) -> Path:
+    """Copy a backup over the live save after first backing up the live file."""
+    if backup_path.resolve() == save_path.resolve():
+        raise ValueError("Cannot restore the live save over itself.")
+    safety_copy = backup_savefile(save_path)
+    shutil.copy2(backup_path, save_path)
+    return safety_copy
 
 
 def read_lines(save_path: Path) -> list[str]:

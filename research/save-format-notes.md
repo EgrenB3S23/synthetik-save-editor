@@ -48,8 +48,15 @@ inserted next to that subclass's other token lines in the right section.
 | `ibonus` | Item, more power | `[Save2]` |
 
 Token values index into the weapon list (`wunlock#`, `wnew#`, `wdropchange#`, 100 entries,
-`[Save3]`) and the item list (`unl# #`, `inew #`, `idropchange #`, 151 entries, `[Save2]`).
-The index-to-object mapping is not known yet.
+`[Save3]`) and the item list. **Observed:** item token numbers match the `N` in `obj_itemN_…`
+(e.g. `107` → `obj_item107_ministim`). Weapon token numbers match the trailing `N` in
+`obj_weapon_*_N` (e.g. `11` → `obj_weapon_REP_11`, same as `spr_weapon11_REP_icon`).
+`wunlock#` values are **not** GameMaker object indices; they look like usage stats.
+Two weapons share suffix 80 (`AR15_80` / `ROD_80`); the editor prefers the one with a name
+guess. Mapping is used for display; still not in-game confirmed.
+
+There is no `unl#` / `inew#` family in the 27.2 save this was checked against. Item pool
+unlocks live as `tunlock_obj_item…` like other pool objects.
 
 ## Loadout pool — `[Save3]`
 
@@ -68,7 +75,25 @@ Per subclass (`<class><subclass>`): `subclasslvl`, `subclassexperience`, `subcla
 and five unknowns `scl`, `sma`, `sta`, `sad`, `ski` (values 0–2). These five are candidates for the
 class level bonus choices.
 
+Observed on a maxed save: every used subclass has `scl=2`, `sma=sta=sad=ski=1`; unused
+`class*2` rows and class 0 are all 0. That fits "picked option index", not a level. Mapping
+which letter is lvl 5 / 10 / 15 / 20 / 25 still needs a single in-game change +
+`research/save_diff.py`. `subclasspst` looks like prestige count (Engineer was 2). `pst#`
+was 0 on all classes in this save even when subclasses were prestiged, so it may be unused
+or a different flag.
+
 ## Other
 
 - `currency` = data (confirmed)
 - `skilltokens`, `labskillpoints`, `arenatokens`: global counters (observed)
+- `resunlock0`–`resunlock13`: 0/1 flags. On this save only `resunlock0` was 0. Candidate for
+  research/DLC unlocks — do not mass-flip without an in-game test.
+- `tunlock_` outliers: `-66` on several `T_path_start_*` talents, `-7001` on
+  `obj_item132_dynamite` and `obj_item54_c4`, `2` on some pistols (A9, CP, DE, G17, …).
+  Meaning unknown; `-7001` / `2` might be DLC-related.
+
+## Icons
+
+`data.win` has a `SPRT` chunk (sprite names) and a ~400MB `TXTR` chunk (pixels). Names that
+look like items/weapons/perks are listed in `gamedata/sprites.json`. Pixel export needs a
+GameMaker texture-page decoder; not done.

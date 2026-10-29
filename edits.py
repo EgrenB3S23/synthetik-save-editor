@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import random
+import re
 from pathlib import Path
 
 import savefile
 import variables
+
+PERK_COUNT = len(variables.main_perk_ids())
+# count:value pairs. Leftover perks (if any) get 1.
+DEFAULT_BOOST_DISTRIBUTION = "10:1.6 20:1.25"
 
 
 def apply_edit(save_path: Path, edit_function) -> None:
@@ -228,8 +234,13 @@ def print_all_perks_by_value_then_class(lines: list[str]) -> None:
 
 def set_data_to_1000(lines: list[str]) -> tuple[list[str], str]:
     """Set the data resource to 1000."""
-    updated_lines, found = savefile.set_variable(lines, variables.DATA_VARIABLE, "1000")
-    formatted_value = savefile.format_display_value("1000")
+    return set_data(lines, "1000")
+
+
+def set_data(lines: list[str], value: str) -> tuple[list[str], str]:
+    """Set the data resource (currency) to a chosen value."""
+    updated_lines, found = savefile.set_variable(lines, variables.DATA_VARIABLE, value)
+    formatted_value = savefile.format_display_value(value)
 
     if found:
         summary = f"Set data to {formatted_value}."
@@ -237,3 +248,88 @@ def set_data_to_1000(lines: list[str]) -> tuple[list[str], str]:
         summary = f"Variable '{variables.DATA_VARIABLE}' was not found in the save file."
 
     return updated_lines, summary
+
+
+def parse_boost_distribution(text: str) -> list[tuple[int, str]] | str:
+    """Parse '10:1.6 20:1.25 32:1' into (count, value) pairs, or return an error string.
+
+    Counts may sum to less than 62; leftover perks are filled with 1.
+    """
+    pairs: list[tuple[int, str]] = []
+    total = 0
+    for chunk in re.split(r"[,\s;]+", text.strip()):
+        if not chunk:
+            continue
+        if ":" not in chunk:
+            return f"Expected count:value pairs, got {chunk!r}."
+        count_text, value_text = chunk.split(":", 1)
+        try:
+            count = int(count_text)
+            float(value_text)
+        except ValueError:
+            return f"Invalid pair {chunk!r}."
+        if count < 0:
+            return "Counts cannot be negative."
+        pairs.append((count, value_text))
+        total += count
+
+    if not pairs:
+        return "Enter at least one count:value pair, e.g. 10:1.6 20:1.25"
+    if total > PERK_COUNT:
+        return f"Counts add up to {total}, but there are only {PERK_COUNT} perks."
+    if total < PERK_COUNT:
+        pairs.append((PERK_COUNT - total, "1"))
+    return pairs
+
+
+def roll_perk_boosts(distribution: list[tuple[int, str]]) -> dict[str, str]:
+    """Shuffle the 62 perks into the given count:value buckets."""
+    perk_ids = list(variables.main_perk_ids())
+    random.shuffle(perk_ids)
+    assigned: dict[str, str] = {}
+    index = 0
+    for count, value in distribution:
+        for perk_id in perk_ids[index : index + count]:
+            assigned[perk_id] = value
+        index += count
+    return assigned
+
+
+def set_perk_boosts(lines: list[str], assigned: dict[str, str]) -> tuple[list[str], str]:
+    """Write a perk-id -> boost map into the save."""
+    by_variable = {variables.perk_variable_name(perk_id): value for perk_id, value in assigned.items()}
+    found: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        parts = savefile.split_line(line)
+        if parts and parts[1] in by_variable:
+            new_lines.append(savefile.build_line(*parts[:2], by_variable[parts[1]], parts[3]))
+            found.add(parts[1])
+        else:
+            new_lines.append(line)
+
+    missing = sorted(set(by_variable) - found)
+    summary = f"Set {len(found)} of {len(assigned)} perk boost(s) from a random roll."
+    if missing:
+        summary += "\nNot found in save file:\n  " + "\n  ".join(missing)
+    return new_lines, summary
+
+
+def format_roll_preview(assigned: dict[str, str]) -> str:
+    """Text listing of a pending perk roll, grouped by class."""
+    lines: list[str] = []
+    for class_name, perk_ids in variables.PERK_CLASSES:
+        lines.append(class_name)
+        for perk_id in perk_ids:
+            value = assigned.get(perk_id)
+            shown = savefile.format_display_value(value) if value is not None else "—"
+            lines.append(f"  {perk_id}: {shown}")
+        lines.append("")
+    counts: dict[str, int] = {}
+    for value in assigned.values():
+        counts[value] = counts.get(value, 0) + 1
+    summary = ", ".join(
+        f"{count}×{savefile.format_display_value(value)}"
+        for value, count in sorted(counts.items(), key=lambda item: float(item[0]), reverse=True)
+    )
+    return f"{summary}\n\n" + "\n".join(lines).rstrip()

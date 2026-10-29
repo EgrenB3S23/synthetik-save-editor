@@ -1,6 +1,7 @@
 # GUI layout notes (from in-game screenshots)
 
-Captured 2026-10-29. Engineer (Specialist, orange) on the hub screen. Not implemented yet.
+Captured 2026-10-29. Engineer (Specialist, orange) on the hub screen. The tkinter GUI follows
+this card layout; tokens and class bonus track are not in the window yet.
 
 ## Hub layout
 

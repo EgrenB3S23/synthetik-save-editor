@@ -111,6 +111,7 @@ class EditorApp:
         self.perks_view: PerksView | None = None
         self.data_view: DataView | None = None
         self.presets_view: PresetsView | None = None
+        self.backups_view: BackupsView | None = None
 
         self._build()
         self.root.after(FILE_POLL_MS, self._poll_file)
@@ -135,6 +136,8 @@ class EditorApp:
             self.data_view.refresh()
         if self.presets_view:
             self.presets_view.refresh()
+        if self.backups_view:
+            self.backups_view.refresh()
         if not quiet:
             self._status.set("Reloaded from save.")
 
@@ -161,6 +164,7 @@ class EditorApp:
             ("perks", "Perk boosts"),
             ("data", "Data"),
             ("presets", "Presets"),
+            ("backups", "Backups"),
         ):
             make_button(
                 nav, label, lambda key=key: self._show(key), bg=NAV, activebackground="#334866"
@@ -173,11 +177,13 @@ class EditorApp:
         self.perks_view = PerksView(self.body, self)
         self.data_view = DataView(self.body, self)
         self.presets_view = PresetsView(self.body, self)
+        self.backups_view = BackupsView(self.body, self)
         self.views = {
             "loadout": self.loadout_view.frame,
             "perks": self.perks_view.frame,
             "data": self.data_view.frame,
             "presets": self.presets_view.frame,
+            "backups": self.backups_view.frame,
         }
         self._show("loadout")
 
@@ -210,6 +216,8 @@ class EditorApp:
             self.data_view.refresh()
         elif key == "presets":
             self.presets_view.refresh()
+        elif key == "backups":
+            self.backups_view.refresh()
 
     def _change_save(self) -> None:
         if self.loadout_view and self.loadout_view.dirty:
@@ -369,6 +377,8 @@ class LoadoutView:
         make_button(
             actions, "Write loadout to save", self._write_save, bg="#2E6B4F", activebackground="#3D8B65"
         ).pack(side="left")
+        self.token_summary = make_label(self.frame, "", fg=MUTED, justify="left", font=("Segoe UI", 9))
+        self.token_summary.pack(anchor="w", pady=(8, 0))
 
     def _on_restriction(self) -> None:
         self._refresh_card()
@@ -439,6 +449,10 @@ class LoadoutView:
                 make_label(row, text, bg=accent, justify="left").pack(anchor="w")
         self.card.configure(bg=accent)
         self.card_inner.configure(bg=accent)
+        token_lines = ["Tokens (marks on Items/Weapons lists, not loadout slots):"]
+        for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
+            token_lines.append(f"{description}: {loadouts.display_tokens(self.loadout['tokens'][family], family)}")
+        self.token_summary.configure(text="\n".join(token_lines))
 
     def _start_pick(self, slot: int, can_empty: bool) -> None:
         self.picking_slot = slot
@@ -585,6 +599,27 @@ class PerksView:
             activebackground="#3D8B65",
         ).pack(side="left", padx=8)
 
+        dist_row = make_frame(self.frame)
+        dist_row.pack(fill="x", pady=(0, 8))
+        make_label(dist_row, "Randomize count:value").pack(side="left", padx=(0, 8))
+        self.dist_var = tk.StringVar(master=self.app.root, value=edits.DEFAULT_BOOST_DISTRIBUTION)
+        make_entry(dist_row, textvariable=self.dist_var, width=28).pack(side="left")
+        make_button(
+            dist_row, "Roll", self._roll, bg=NAV, activebackground="#334866"
+        ).pack(side="left", padx=6)
+        make_button(
+            dist_row, "Reroll", self._reroll, bg=NAV, activebackground="#334866"
+        ).pack(side="left")
+        make_button(
+            dist_row,
+            "Accept roll",
+            self._accept_roll,
+            bg="#2E6B4F",
+            activebackground="#3D8B65",
+        ).pack(side="left", padx=6)
+
+        self.pending_roll: dict[str, str] | None = None
+        self.pending_distribution: list[tuple[int, str]] | None = None
         self.summary = make_label(self.frame, "", fg=MUTED, justify="left")
         self.summary.pack(anchor="w", pady=(0, 8))
 
@@ -602,12 +637,18 @@ class PerksView:
     def refresh(self) -> None:
         for child in self.list_frame.winfo_children():
             child.destroy()
-        counts, missing = savefile.count_main_perk_boost_values(self.app.lines)
-        lines = []
+        if self.pending_roll:
+            counts: dict[str, int] = {}
+            for value in self.pending_roll.values():
+                counts[value] = counts.get(value, 0) + 1
+            lines = ["Roll preview (not written yet)"]
+        else:
+            counts, missing = savefile.count_main_perk_boost_values(self.app.lines)
+            lines = []
+            if missing:
+                lines.append(f"Not found: {missing}")
         for raw, count in sorted(counts.items(), key=lambda item: float(item[0])):
             lines.append(f"{savefile.format_display_value(raw)} : {count} perks")
-        if missing:
-            lines.append(f"Not found: {missing}")
         self.summary.configure(text="\n".join(lines) or "No perk values found.")
 
         perk_values = savefile.get_main_perk_values(self.app.lines)
@@ -618,6 +659,9 @@ class PerksView:
             for perk_id in perk_ids:
                 raw = perk_values.get(perk_id)
                 shown = savefile.format_display_value(raw) if raw is not None else "not found"
+                if self.pending_roll and perk_id in self.pending_roll:
+                    pending = savefile.format_display_value(self.pending_roll[perk_id])
+                    shown = f"{shown}  →  {pending}"
                 object_id = f"obj_perk_{perk_id}"
                 make_button(
                     self.list_frame,
@@ -644,6 +688,8 @@ class PerksView:
             return
         if not messagebox.askyesno("Set all perks", f"Set all 62 perk boosts to {value}?"):
             return
+        self.pending_roll = None
+        self.pending_distribution = None
         self.app.apply_and_refresh(
             lambda lines: edits.set_all_perk_daily_module_boosts(lines, value),
             f"Set all perk boosts to {value}.",
@@ -653,9 +699,48 @@ class PerksView:
         value = self._parse_value()
         if value is None:
             return
+        self.pending_roll = None
         self.app.apply_and_refresh(
             lambda lines: edits.set_single_perk_daily_module_boost(lines, perk_id, value),
             f"Set {perk_id} to {value}.",
+        )
+
+    def _parse_distribution(self) -> list[tuple[int, str]] | None:
+        parsed = edits.parse_boost_distribution(self.dist_var.get())
+        if isinstance(parsed, str):
+            messagebox.showerror("Invalid distribution", parsed)
+            return None
+        return parsed
+
+    def _roll(self) -> None:
+        parsed = self._parse_distribution()
+        if parsed is None:
+            return
+        self.pending_distribution = parsed
+        self.pending_roll = edits.roll_perk_boosts(parsed)
+        self.refresh()
+        self.app._status.set("Rolled perk boosts. Accept roll to write, or reroll.")
+
+    def _reroll(self) -> None:
+        if self.pending_distribution is None:
+            self._roll()
+            return
+        self.pending_roll = edits.roll_perk_boosts(self.pending_distribution)
+        self.refresh()
+        self.app._status.set("Rerolled perk boosts. Accept roll to write.")
+
+    def _accept_roll(self) -> None:
+        if not self.pending_roll:
+            messagebox.showinfo("No roll", "Click Roll first.")
+            return
+        assigned = dict(self.pending_roll)
+        if not messagebox.askyesno("Accept roll", "Write this perk roll to the save file?"):
+            return
+        self.pending_roll = None
+        self.pending_distribution = None
+        self.app.apply_and_refresh(
+            lambda lines: edits.set_perk_boosts(lines, assigned),
+            "Wrote randomized perk boosts.",
         )
 
 
@@ -691,13 +776,7 @@ class DataView:
         if not messagebox.askyesno("Set data", f"Set data (currency) to {text}?"):
             return
 
-        def edit(lines: list[str]) -> tuple[list[str], str]:
-            updated, found = savefile.set_variable(lines, variables.DATA_VARIABLE, text)
-            if found:
-                return updated, f"Set data to {savefile.format_display_value(text)}."
-            return updated, f"Variable '{variables.DATA_VARIABLE}' was not found."
-
-        self.app.apply_and_refresh(edit, f"Set data to {text}.")
+        self.app.apply_and_refresh(lambda lines: edits.set_data(lines, text), f"Set data to {text}.")
 
 
 class PresetsView:
@@ -718,6 +797,10 @@ class PresetsView:
         make_button(buttons, "Load selected", self._load, bg="#3A4A66", activebackground="#4A5A76").pack(
             side="left", padx=(0, 6)
         )
+        make_button(buttons, "Rename…", self._rename, bg=NAV, activebackground="#334866").pack(
+            side="left", padx=(0, 6)
+        )
+        make_button(buttons, "Delete", self._delete, bg="#6B3A3A", activebackground="#8B4A4A").pack(side="left")
 
         self.list_box = tk.Listbox(
             self.frame, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=8
@@ -755,7 +838,7 @@ class PresetsView:
             lines.append(f"Slot {slot}: {catalog.labeled(value, multiline=False)}")
         lines.append("")
         for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
-            lines.append(f"{description}: {loadouts.display_tokens(preset['tokens'][family])}")
+            lines.append(f"{description}: {loadouts.display_tokens(preset['tokens'][family], family)}")
         self.detail.insert("end", "\n".join(lines))
 
     def _save(self) -> None:
@@ -793,6 +876,85 @@ class PresetsView:
             lambda lines: loadouts.apply_preset(lines, preset),
             f"Loaded '{preset['name']}' into {preset['subclass']}.",
         )
+
+    def _rename(self) -> None:
+        if self.selected is None:
+            messagebox.showinfo("No preset", "Select a valid preset first.")
+            return
+        path, preset = self.selected
+        new_name = simpledialog.askstring("Rename preset", "New name:", initialvalue=preset["name"], parent=self.app.root)
+        if not new_name:
+            return
+        try:
+            new_path = loadouts.rename_preset(path, preset, new_name)
+        except FileExistsError as error:
+            messagebox.showerror("Name in use", str(error))
+            return
+        except ValueError as error:
+            messagebox.showerror("Could not rename", str(error))
+            return
+        self.refresh()
+        self.app._status.set(f"Renamed to {new_path.name}")
+
+    def _delete(self) -> None:
+        if self.selected is None:
+            messagebox.showinfo("No preset", "Select a valid preset first.")
+            return
+        path, preset = self.selected
+        if not messagebox.askyesno("Delete preset", f"Delete '{preset['name']}' ({path.name})?"):
+            return
+        path.unlink()
+        self.refresh()
+        self.app._status.set(f"Deleted {path.name}")
+
+
+class BackupsView:
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        make_label(self.frame, "Save backups", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        self.hint = make_label(
+            self.frame,
+            "Backups are created next to the save on every edit. Restoring copies one over the live save.",
+            fg=MUTED,
+        )
+        self.hint.pack(anchor="w", pady=(0, 6))
+        buttons = make_frame(self.frame)
+        buttons.pack(fill="x", pady=4)
+        make_button(buttons, "Refresh", self.refresh, bg=NAV, activebackground="#334866").pack(side="left", padx=(0, 6))
+        make_button(
+            buttons, "Restore selected", self._restore, bg="#2E6B4F", activebackground="#3D8B65"
+        ).pack(side="left")
+        self.list_box = tk.Listbox(
+            self.frame, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=18
+        )
+        self.list_box.pack(fill="both", expand=True, pady=6)
+
+    def refresh(self) -> None:
+        self.list_box.delete(0, "end")
+        self.backups = savefile.list_backups(self.app.save_path)
+        if not self.backups:
+            self.list_box.insert("end", "(no backups next to this save)")
+            return
+        for path in self.backups:
+            stamp = savefile.backup_stamp(path) or "?"
+            self.list_box.insert("end", f"{path.name}  ({stamp})")
+
+    def _restore(self) -> None:
+        selection = self.list_box.curselection()
+        if not selection or not self.backups:
+            messagebox.showinfo("No backup", "Select a backup first.")
+            return
+        backup_path = self.backups[selection[0]]
+        if not messagebox.askyesno(
+            "Restore backup",
+            f"Replace the live save with {backup_path.name}?\nThe current save will be backed up first.",
+        ):
+            return
+        safety = savefile.restore_backup(self.app.save_path, backup_path)
+        self.app.reload_from_disk(quiet=True)
+        self.app._status.set(f"Restored {backup_path.name}. Previous save copied to {safety.name}.")
+        self.refresh()
 
 
 def open_loadout_editor(save_path: Path) -> None:
