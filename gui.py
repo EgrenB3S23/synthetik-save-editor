@@ -271,6 +271,7 @@ class LoadoutView:
         self.loadout = loadouts.read_loadout(app.lines, self.class_index, self.subclass_index)
         self.dirty = False
         self.picking_slot: int | None = None
+        self.picking_token: tuple[str, int] | None = None
         self.picking_can_empty = False
         self.filter_var = tk.StringVar(master=app.root)
         self.restriction = tk.StringVar(master=app.root, value="Omniclass")
@@ -377,8 +378,14 @@ class LoadoutView:
         make_button(
             actions, "Write loadout to save", self._write_save, bg="#2E6B4F", activebackground="#3D8B65"
         ).pack(side="left")
-        self.token_summary = make_label(self.frame, "", fg=MUTED, justify="left", font=("Segoe UI", 9))
-        self.token_summary.pack(anchor="w", pady=(8, 0))
+        make_label(
+            self.frame,
+            "Tokens — click a mark to place or clear it. Write loadout saves slots and tokens together.",
+            fg=MUTED,
+            font=("Segoe UI", 9),
+        ).pack(anchor="w", pady=(8, 0))
+        self.token_panel = make_frame(self.frame)
+        self.token_panel.pack(fill="x")
 
     def _on_restriction(self) -> None:
         self._refresh_card()
@@ -405,6 +412,7 @@ class LoadoutView:
         self.dirty = False
         self.loadout = loadouts.read_loadout(self.app.lines, class_index, subclass_index)
         self.picking_slot = None
+        self.picking_token = None
         self.filter_var.set("")
         self._refresh_card()
         self._fill_picker()
@@ -449,17 +457,43 @@ class LoadoutView:
                 make_label(row, text, bg=accent, justify="left").pack(anchor="w")
         self.card.configure(bg=accent)
         self.card_inner.configure(bg=accent)
-        token_lines = ["Tokens (marks on Items/Weapons lists, not loadout slots):"]
+        self._refresh_tokens()
+
+    def _refresh_tokens(self) -> None:
+        for child in self.token_panel.winfo_children():
+            child.destroy()
         for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
-            token_lines.append(f"{description}: {loadouts.display_tokens(self.loadout['tokens'][family], family)}")
-        self.token_summary.configure(text="\n".join(token_lines))
+            row = make_frame(self.token_panel)
+            row.pack(fill="x", pady=1)
+            make_label(row, description, fg=MUTED, width=22).pack(side="left")
+            values = self.loadout["tokens"][family]
+            for index in range(loadouts.TOKENS_PER_FAMILY):
+                text = loadouts.display_token_value(family, values[index])
+                make_button(
+                    row,
+                    text,
+                    lambda family=family, index=index: self._start_token_pick(family, index),
+                    bg=NAV,
+                    activebackground="#334866",
+                    font=("Segoe UI", 8),
+                ).pack(side="left", padx=2)
 
     def _start_pick(self, slot: int, can_empty: bool) -> None:
         self.picking_slot = slot
+        self.picking_token = None
         self.picking_can_empty = can_empty
         self.filter_var.set("")
         row = next(r for r in CARD_ROWS if r[0] == slot)
         self.picker_title.configure(text=row[1])
+        self._fill_picker()
+        self.filter_entry.focus_set()
+
+    def _start_token_pick(self, family: str, index: int) -> None:
+        self.picking_slot = None
+        self.picking_token = (family, index)
+        self.filter_var.set("")
+        description = loadouts.TOKEN_FAMILIES[family][1]
+        self.picker_title.configure(text=f"{description}  ({index + 1}/4)")
         self._fill_picker()
         self.filter_entry.focus_set()
 
@@ -500,8 +534,11 @@ class LoadoutView:
     def _fill_picker(self) -> None:
         for child in self.picker_list.winfo_children():
             child.destroy()
+        if self.picking_token is not None:
+            self._fill_token_picker()
+            return
         if self.picking_slot is None:
-            make_label(self.picker_list, "Click a slot on the card.", bg=PANEL, fg=MUTED).pack(
+            make_label(self.picker_list, "Click a slot on the card or a token mark.", bg=PANEL, fg=MUTED).pack(
                 anchor="w", padx=8, pady=8
             )
             return
@@ -531,6 +568,56 @@ class LoadoutView:
                 justify="left",
             ).pack(fill="x", padx=4, pady=2)
 
+        self._picker_footer(shown, truncated)
+
+    def _fill_token_picker(self) -> None:
+        family, index = self.picking_token
+        query = self.filter_var.get()
+        current = self.loadout["tokens"][family][index]
+        current_number = None
+        if current is not None:
+            try:
+                current_number = int(float(current))
+            except ValueError:
+                current_number = None
+
+        shown = 0
+        truncated = False
+        make_button(
+            self.picker_list,
+            "▸ (unplaced)" if current is None else "  (unplaced)",
+            lambda: self._choose_token(None),
+            bg="#2A3548",
+            activebackground="#3A4558",
+            anchor="w",
+            justify="left",
+        ).pack(fill="x", padx=4, pady=2)
+        shown += 1
+
+        for number, object_id in catalog.token_options(family):
+            search = f"{number} {catalog.entry_search_text(object_id)}"
+            if query and not catalog.subsequence_match(query, search):
+                continue
+            if shown >= FILTER_MATCH_LIMIT:
+                truncated = True
+                break
+            shown += 1
+            group = catalog.class_group_of(object_id)
+            color = GROUP_COLORS.get(group or "", "#2A3548")
+            mark = "▸ " if number == current_number else "  "
+            make_button(
+                self.picker_list,
+                f"{mark}{number}  {catalog.labeled(object_id, multiline=False)}",
+                lambda number=number: self._choose_token(str(number)),
+                bg=color,
+                activebackground=color,
+                anchor="w",
+                justify="left",
+            ).pack(fill="x", padx=4, pady=2)
+
+        self._picker_footer(shown, truncated)
+
+    def _picker_footer(self, shown: int, truncated: bool) -> None:
         if shown == 0:
             make_label(self.picker_list, "No matches. Keep typing or clear the filter.", bg=PANEL, fg=MUTED).pack(
                 anchor="w", padx=8, pady=8
@@ -549,6 +636,16 @@ class LoadoutView:
         if self.picking_slot is None:
             return
         self.loadout["slots"][self.picking_slot] = object_id
+        self._mark_dirty()
+
+    def _choose_token(self, value: str | None) -> None:
+        if self.picking_token is None:
+            return
+        family, index = self.picking_token
+        self.loadout["tokens"][family][index] = value
+        self._mark_dirty()
+
+    def _mark_dirty(self) -> None:
         self.dirty = True
         self._refresh_card()
         self._fill_picker()

@@ -193,6 +193,35 @@ def options_for_slot(slot: int, class_index: int, restriction: str = "Omniclass"
     return unique_ids
 
 
+def token_options(family: str) -> list[tuple[int, str]]:
+    """(token number, object id) pairs for placing a weapon or item token."""
+    rows: list[tuple[int, str]] = []
+    if family.startswith("i"):
+        for entry in _entries("items.json", "items"):
+            number = entry.get("item_number")
+            object_id = entry.get("id")
+            if number is None or not object_id:
+                continue
+            rows.append((int(number), str(object_id)))
+    else:
+        seen: set[int] = set()
+        ranked = sorted(
+            _entries("weapons.json", "weapons"),
+            key=lambda entry: (not entry.get("name_guess"), not entry.get("in_loadout_pool"), entry.get("id") or ""),
+        )
+        for entry in ranked:
+            object_id = entry.get("id")
+            if not object_id:
+                continue
+            number = _suffix_number(str(object_id))
+            if number is None or number in seen:
+                continue
+            seen.add(number)
+            rows.append((number, str(object_id)))
+    rows.sort(key=lambda row: row[0])
+    return rows
+
+
 def pool_ids(kind: str) -> list[str]:
     """Starter-pool object ids. kind is perks, items, or weapons."""
     file_name = {"perks": "perks.json", "items": "items.json", "weapons": "weapons.json"}[kind]
