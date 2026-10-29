@@ -24,35 +24,57 @@ def config_file() -> Path:
     return config_dir() / CONFIG_FILE_NAME
 
 
-def load_last_save_path() -> Path | None:
-    """Return the last successfully used save path, if the file still exists."""
+def load_config() -> dict:
+    """Read per-user settings. Missing or broken files count as empty."""
     config_path = config_file()
     if not config_path.is_file():
-        return None
-
+        return {}
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        saved = data.get("last_save_path")
-        if not saved:
-            return None
-        path = Path(saved)
     except (OSError, json.JSONDecodeError, TypeError):
-        return None
+        return {}
+    return data if isinstance(data, dict) else {}
 
+
+def save_config(updates: dict) -> None:
+    """Merge keys into the per-user config file."""
+    try:
+        data = load_config()
+        data.update(updates)
+        config_path = config_file()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_last_save_path() -> Path | None:
+    """Return the last successfully used save path, if the file still exists."""
+    saved = load_config().get("last_save_path")
+    if not saved:
+        return None
+    try:
+        path = Path(saved)
+    except TypeError:
+        return None
     return path if path.is_file() else None
 
 
 def save_last_save_path(save_path: Path) -> None:
     """Remember a save path for the next run."""
-    try:
-        config_path = config_file()
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(
-            json.dumps({"last_save_path": str(save_path.resolve())}, indent=2) + "\n",
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
+    save_config({"last_save_path": str(save_path.resolve())})
+
+
+def load_cheat_level() -> str:
+    import catalog
+
+    return catalog.normalize_cheat_level(load_config().get("cheat_level"))
+
+
+def save_cheat_level(level: str) -> None:
+    import catalog
+
+    save_config({"cheat_level": catalog.normalize_cheat_level(level)})
 
 
 def local_appdata_dir() -> Path:

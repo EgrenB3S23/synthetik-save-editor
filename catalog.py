@@ -29,6 +29,52 @@ CLASS_GROUP_BY_INDEX = {
     4: "Specialist",
 }
 
+# Higher index = more loadout freedom. Not stored in presets.
+CHEAT_LEVELS: list[tuple[str, str]] = [
+    ("Vanilla", "This class group's usual choices only. Cores stay locked."),
+    ("Omniclass", "Any starter-pool object of this slot's type, any class. Cores locked."),
+    ("Uber Omniclass", "Omniclass, plus swapping class cores (memory module and class item)."),
+    ("Omnislots", "Any starter-pool object in any slot."),
+    ("Unlimited", "Any item, weapon, perk, or artefact in the game data, any slot."),
+]
+DEFAULT_CHEAT_LEVEL = "Omniclass"
+_SKIP_IDS = {"obj_perk_parent", "obj_item_parent", "obj_weapon_parent"}
+
+
+def cheat_rank(level: str) -> int:
+    names = [name for name, _ in CHEAT_LEVELS]
+    try:
+        return names.index(level)
+    except ValueError:
+        return names.index(DEFAULT_CHEAT_LEVEL)
+
+
+def normalize_cheat_level(level: str | None) -> str:
+    names = {name for name, _ in CHEAT_LEVELS}
+    if level in names:
+        return level
+    return DEFAULT_CHEAT_LEVEL
+
+
+def cheat_blurb(level: str) -> str:
+    level = normalize_cheat_level(level)
+    for name, blurb in CHEAT_LEVELS:
+        if name == level:
+            return blurb
+    return ""
+
+
+def slot_editable(slot: int, cheat_level: str, vanilla_editable: bool) -> bool:
+    """Whether the loadout card should let this slot be clicked."""
+    rank = cheat_rank(cheat_level)
+    if vanilla_editable:
+        return True
+    if slot in (0, 3):
+        return rank >= 2
+    if slot in (1, 2, 8):
+        return rank >= 3
+    return rank >= 3
+
 
 def _gamedata_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -164,33 +210,78 @@ def slot_kind(slot: int) -> str:
     return "perks"
 
 
-def options_for_slot(slot: int, class_index: int, restriction: str = "Omniclass") -> list[str]:
-    """Candidate object ids for one slot. restriction: Vanilla / Omniclass / Omnislots."""
-    if restriction == "Omnislots":
+def _unique_ids(ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique_ids = []
+    for object_id in ids:
+        if object_id and object_id not in seen and object_id not in _SKIP_IDS:
+            seen.add(object_id)
+            unique_ids.append(object_id)
+    return unique_ids
+
+
+def equipped_on_class(lines: list[str], class_index: int) -> list[str]:
+    """Object ids currently in either subclass loadout for this class."""
+    ids: list[str] = []
+    for subclass_index in (0, 1):
+        loadout = loadouts.read_loadout(lines, class_index, subclass_index)
+        ids.extend(value for value in loadout["slots"] if value)
+    return ids
+
+
+def _typed(ids: list[str], kind: str) -> list[str]:
+    prefixes = {
+        "weapons": "obj_weapon",
+        "items": "obj_item",
+        "perks": "obj_perk",
+        "artefacts": "obj_artefact",
+    }
+    prefix = prefixes[kind]
+    return [object_id for object_id in ids if object_id.startswith(prefix)]
+
+
+def options_for_slot(
+    slot: int,
+    class_index: int,
+    restriction: str = DEFAULT_CHEAT_LEVEL,
+    class_equipped: list[str] | None = None,
+) -> list[str]:
+    """Candidate object ids for one slot at a cheat level."""
+    level = normalize_cheat_level(restriction)
+    rank = cheat_rank(level)
+    kind = slot_kind(slot)
+    equipped = class_equipped or []
+
+    if rank >= 4:
+        ids = all_ids("weapons") + all_ids("items") + all_ids("perks") + all_ids("artefacts")
+    elif rank >= 3:
         ids = pool_ids("weapons") + pool_ids("items") + pool_ids("perks")
     elif slot == 0:
         ids = sorted(class_core_ids())
-    elif slot_kind(slot) == "weapons":
-        ids = pool_ids("weapons")
-    elif slot_kind(slot) == "items":
-        ids = pool_ids("items")
+        if rank < 2:
+            cores = _typed(equipped, "perks")
+            class_cores = [object_id for object_id in cores if object_id in class_core_ids()]
+            ids = class_cores or ids
+    elif kind == "weapons":
+        if rank == 0:
+            ids = _typed(equipped, "weapons") or pool_ids("weapons")
+        else:
+            ids = pool_ids("weapons")
+    elif kind == "items":
+        if rank == 0:
+            ids = _typed(equipped, "items") or pool_ids("items")
+        else:
+            ids = pool_ids("items")
     else:
         ids = class_perk_ids(class_index)
-        if restriction != "Vanilla":
+        if rank >= 1:
             for perk_id in pool_ids("perks"):
                 if perk_id not in class_core_ids() and perk_id not in ids:
                     ids.append(perk_id)
 
     if slot in (1, 2, 4, 5, 6, 7, 8):
         ids = [RANDOM_MODULE_ID] + ids
-
-    seen: set[str] = set()
-    unique_ids = []
-    for object_id in ids:
-        if object_id and object_id not in seen:
-            seen.add(object_id)
-            unique_ids.append(object_id)
-    return unique_ids
+    return _unique_ids(ids)
 
 
 def token_options(family: str) -> list[tuple[int, str]]:
@@ -224,13 +315,27 @@ def token_options(family: str) -> list[tuple[int, str]]:
 
 def pool_ids(kind: str) -> list[str]:
     """Starter-pool object ids. kind is perks, items, or weapons."""
-    file_name = {"perks": "perks.json", "items": "items.json", "weapons": "weapons.json"}[kind]
-    key = kind
-    ids = []
-    for entry in _entries(file_name, key):
-        if entry.get("in_loadout_pool") and entry.get("id"):
-            ids.append(entry["id"])
-    return ids
+    return [
+        str(entry["id"])
+        for entry in _kind_entries(kind)
+        if entry.get("in_loadout_pool") and entry.get("id")
+    ]
+
+
+def all_ids(kind: str) -> list[str]:
+    """Every extracted object id of this kind, including non-starter gear."""
+    return [str(entry["id"]) for entry in _kind_entries(kind) if entry.get("id")]
+
+
+def _kind_entries(kind: str) -> list[dict]:
+    files = {
+        "perks": ("perks.json", "perks"),
+        "items": ("items.json", "items"),
+        "weapons": ("weapons.json", "weapons"),
+        "artefacts": ("other_pool.json", "artefacts"),
+    }
+    file_name, key = files[kind]
+    return _entries(file_name, key)
 
 
 def class_perk_ids(class_index: int) -> list[str]:

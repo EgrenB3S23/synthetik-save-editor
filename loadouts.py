@@ -503,9 +503,35 @@ def list_presets_flow() -> None:
 SLOT_EDIT_MATCH_LIMIT = 40
 
 
-def edit_slot_flow(save_path: Path) -> None:
-    """Change one loadout slot from a filtered list (Omniclass pool)."""
+def cheat_level_flow() -> None:
+    """Pick the loadout freedom / cheat tier used by slot editing."""
     import catalog
+    import save_paths
+
+    current = save_paths.load_cheat_level()
+    print()
+    print(f"Current cheat level: {current}")
+    print(catalog.cheat_blurb(current))
+    print()
+    for index, (name, blurb) in enumerate(catalog.CHEAT_LEVELS, start=1):
+        mark = "*" if name == current else " "
+        print(f"{index}. {mark} {name}")
+        print(f"      {blurb}")
+    print("0. Cancel")
+    print()
+    choice = input("Choose a cheat level: ").strip()
+    if choice == "0" or not choice.isdigit() or int(choice) not in range(1, len(catalog.CHEAT_LEVELS) + 1):
+        print("Cheat level unchanged.")
+        return
+    name = catalog.CHEAT_LEVELS[int(choice) - 1][0]
+    save_paths.save_cheat_level(name)
+    print(f"Cheat level is now {name}. This is not stored in presets.")
+
+
+def edit_slot_flow(save_path: Path) -> None:
+    """Change one loadout slot from a filtered list at the current cheat level."""
+    import catalog
+    import save_paths
 
     lines = savefile.read_lines(save_path)
     selection = select_subclass(lines)
@@ -529,8 +555,15 @@ def edit_slot_flow(save_path: Path) -> None:
     current = loadout["slots"][slot]
     print()
     print(f"Current slot {slot}: {catalog.labeled(current, multiline=False)}")
+    level = save_paths.load_cheat_level()
+    print(f"Cheat level: {level} — {catalog.cheat_blurb(level)}")
     query = input("Filter (empty lists the first matches): ").strip()
-    options = catalog.options_for_slot(slot, class_index, "Omniclass")
+    options = catalog.options_for_slot(
+        slot,
+        class_index,
+        level,
+        catalog.equipped_on_class(lines, class_index),
+    )
     shown: list[str] = []
     for object_id in options:
         if query and not catalog.subsequence_match(query, catalog.entry_search_text(object_id)):
@@ -673,6 +706,7 @@ def run_loadout_menu(save_path: Path) -> None:
         "6": "6. Rename a preset",
         "7": "7. Delete a preset",
         "8": "8. Edit a single loadout slot",
+        "9": "9. Cheat level (how free loadout picks are)",
         "0": "0. Back to main menu",
     }
 
@@ -680,7 +714,7 @@ def run_loadout_menu(save_path: Path) -> None:
         print()
         print("=== Loadouts ===")
         print()
-        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "0"):
+        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"):
             print(options[key])
         print()
 
@@ -708,5 +742,7 @@ def run_loadout_menu(save_path: Path) -> None:
             delete_preset_flow()
         elif choice == "8":
             edit_slot_flow(save_path)
+        elif choice == "9":
+            cheat_level_flow()
         elif choice == "0":
             return

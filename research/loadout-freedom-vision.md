@@ -1,8 +1,9 @@
 # Loadout freedom — vision
 
-Status: **partial**. GUI restriction radios cover Vanilla / Omniclass / Omnislots for the loadout
-card (session-only). Uber Omniclass (bonus swap) and Unlimited (non-pool objects) wait on
-in-game tests. This document captures the rest of the goal and the open questions.
+Status: **partial**. The editor has a global **cheat level** (Vanilla → Unlimited) that
+changes which objects the loadout pickers offer. Class bonus swap is still not implemented
+(the five `scl/sma/sta/sad/ski` letters are unmapped). In-game tests of foreign objects are
+still needed; the editor will write whatever the current cheat level allows.
 
 ## The idea
 
@@ -105,7 +106,8 @@ Ordered roughly by how much they decide what's possible:
 - Weapon token values look like the trailing `N` in `obj_weapon_*_N` (e.g. 11 → REP_11).
   `wunlock#` is **not** an object index (looks like a usage stat). Suffix 80 is shared by
   AR15_80 and ROD_80.
-- GUI restriction radios are session-only (Vanilla / Omniclass / Omnislots). Not stored in
-  presets. Uber Omniclass (class bonus swap) and Unlimited (non-pool objects) are not in the
-  GUI until in-game tests land.
+- Cheat level is a global editor setting (remembered in config.json, not in presets):
+  Vanilla, Omniclass, Uber Omniclass (cores clickable), Omnislots (any pool object / extra
+  slots 1, 2, 8), Unlimited (full extracted item/weapon/perk/artefact lists).
+- Class bonus track swap is still unmapped. The game may still reset illegal loadouts.
 - `slot#perkgroup#` / `slot#power#` stay out of presets.

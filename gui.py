@@ -45,8 +45,14 @@ CARD_ROWS = [
     (6, "Class perk 1 (Overdrive slot)", True, True),
     (7, "Class perk 2", True, True),
 ]
+# Save slots that are not on the vanilla class card. Shown at Omnislots+.
+EXTRA_CARD_ROWS = [
+    (1, "Extra slot 1", False, True),
+    (2, "Extra slot 2", False, True),
+    (8, "Extra slot 8", False, True),
+]
 
-RESTRICTIONS = ("Vanilla", "Omniclass", "Omnislots")
+CHEAT_LEVELS = [name for name, _ in catalog.CHEAT_LEVELS]
 
 
 def make_frame(parent, **kwargs) -> tk.Frame:
@@ -126,6 +132,8 @@ class EditorApp:
 
         self._status = tk.StringVar(master=self.root, value=f"Save: {save_path}")
         self._path_text = tk.StringVar(master=self.root, value=str(save_path))
+        self.cheat_level = tk.StringVar(master=self.root, value=save_paths.load_cheat_level())
+        self.cheat_blurb = tk.StringVar(master=self.root, value=catalog.cheat_blurb(self.cheat_level.get()))
         self.views: dict[str, tk.Frame] = {}
         self.current_view = "menu"
         self._back_to = "menu"
@@ -185,6 +193,27 @@ class EditorApp:
             side="left", fill="x", expand=True
         )
         make_button(path_row, "Change…", self._change_save, bg=NAV, activebackground="#334866").pack(side="right")
+
+        cheat = make_frame(header)
+        cheat.pack(fill="x", pady=(8, 0))
+        make_label(cheat, "Cheat level", fg=MUTED).pack(side="left", padx=(0, 8))
+        for level in CHEAT_LEVELS:
+            tk.Radiobutton(
+                cheat,
+                text=level,
+                variable=self.cheat_level,
+                value=level,
+                command=self._on_cheat_level,
+                bg=BG,
+                fg=FG,
+                selectcolor=NAV,
+                activebackground=BG,
+                activeforeground=FG,
+                font=("Segoe UI", 9),
+            ).pack(side="left", padx=(0, 8))
+        make_label(header, "", textvariable=self.cheat_blurb, fg=MUTED, font=("Segoe UI", 9)).pack(
+            anchor="w", pady=(2, 0)
+        )
 
         nav = make_frame(self.root)
         nav.pack(fill="x", padx=12, pady=(0, 6))
@@ -257,6 +286,15 @@ class EditorApp:
 
     def _back(self) -> None:
         self._show(self._back_to)
+
+    def _on_cheat_level(self) -> None:
+        level = catalog.normalize_cheat_level(self.cheat_level.get())
+        self.cheat_level.set(level)
+        self.cheat_blurb.set(catalog.cheat_blurb(level))
+        save_paths.save_cheat_level(level)
+        if self.loadout_view:
+            self.loadout_view.on_cheat_level()
+        self._status.set(f"Cheat level: {level}")
 
     def _change_save(self) -> None:
         if self.loadout_view and self.loadout_view.dirty:
@@ -444,7 +482,6 @@ class LoadoutView:
         self.picking_token: tuple[str, int] | None = None
         self.picking_can_empty = False
         self.filter_var = tk.StringVar(master=app.root)
-        self.restriction = tk.StringVar(master=app.root, value="Omniclass")
         self._build()
         self._refresh_card()
 
@@ -480,23 +517,12 @@ class LoadoutView:
                 activebackground=color,
             ).pack(side="left", padx=(0, 6), pady=2)
 
-        rest = make_frame(top)
-        rest.pack(fill="x", pady=(0, 6))
-        make_label(rest, "Restriction", fg=MUTED).pack(side="left", padx=(0, 8))
-        for level in RESTRICTIONS:
-            tk.Radiobutton(
-                rest,
-                text=level,
-                variable=self.restriction,
-                value=level,
-                command=self._on_restriction,
-                bg=BG,
-                fg=FG,
-                selectcolor=NAV,
-                activebackground=BG,
-                activeforeground=FG,
-                font=("Segoe UI", 10),
-            ).pack(side="left", padx=(0, 10))
+        make_label(
+            top,
+            "Cheat level is at the top of the window. Higher tiers unlock cores, other slot types, then non-starter gear.",
+            fg=MUTED,
+            font=("Segoe UI", 9),
+        ).pack(anchor="w", pady=(0, 6))
 
         body = make_frame(self.frame)
         body.pack(fill="both", expand=True)
@@ -557,9 +583,18 @@ class LoadoutView:
         self.token_panel = make_frame(self.frame)
         self.token_panel.pack(fill="x")
 
-    def _on_restriction(self) -> None:
+    def on_cheat_level(self) -> None:
         self._refresh_card()
         self._fill_picker()
+
+    def _cheat(self) -> str:
+        return catalog.normalize_cheat_level(self.app.cheat_level.get())
+
+    def _card_rows(self) -> list[tuple[int, str, bool, bool]]:
+        rows = list(CARD_ROWS)
+        if catalog.cheat_rank(self._cheat()) >= 3:
+            rows.extend(EXTRA_CARD_ROWS)
+        return rows
 
     def _bind_wheel(self, on: bool) -> None:
         if on:
@@ -588,9 +623,6 @@ class LoadoutView:
         self._fill_picker()
         self.app._status.set(f"Viewing {loadouts.subclass_name(class_index, subclass_index)}")
 
-    def _cores_editable(self) -> bool:
-        return self.restriction.get() == "Omnislots"
-
     def _refresh_card(self) -> None:
         for child in self.card_inner.winfo_children():
             child.destroy()
@@ -605,8 +637,8 @@ class LoadoutView:
         )
 
         slots = self.loadout["slots"]
-        for slot, label, vanilla_edit, can_empty in CARD_ROWS:
-            can_edit = vanilla_edit or self._cores_editable()
+        for slot, label, vanilla_edit, can_empty in self._card_rows():
+            can_edit = catalog.slot_editable(slot, self._cheat(), vanilla_edit)
             value = slots[slot]
             row = make_frame(self.card_inner, bg=accent, padx=12, pady=6)
             row.pack(fill="x")
@@ -653,7 +685,7 @@ class LoadoutView:
         self.picking_token = None
         self.picking_can_empty = can_empty
         self.filter_var.set("")
-        row = next(r for r in CARD_ROWS if r[0] == slot)
+        row = next(r for r in self._card_rows() if r[0] == slot)
         self.picker_title.configure(text=row[1])
         self._fill_picker()
         self.filter_entry.focus_set()
@@ -667,37 +699,14 @@ class LoadoutView:
         self._fill_picker()
         self.filter_entry.focus_set()
 
-    def _items_on_this_class(self) -> list[str]:
-        ids = []
-        for subclass_index in (0, 1):
-            current = loadouts.read_loadout(self.app.lines, self.class_index, subclass_index)
-            for slot in (3, 4, 5):
-                value = current["slots"][slot]
-                if value and value.startswith("obj_item"):
-                    ids.append(value)
-        return unique(ids)
-
     def _options_for_slot(self, slot: int, can_empty: bool) -> list[str]:
-        level = self.restriction.get()
-        kind = "weapons" if slot == 9 else "items" if slot in (3, 4, 5) else "perks"
-
-        if level == "Omnislots":
-            ids = catalog.pool_ids("weapons") + catalog.pool_ids("items") + catalog.pool_ids("perks")
-        elif kind == "weapons":
-            ids = catalog.pool_ids("weapons")
-        elif kind == "items":
-            if level == "Vanilla":
-                ids = self._items_on_this_class() or catalog.pool_ids("items")
-            else:
-                ids = catalog.pool_ids("items")
-        else:
-            ids = catalog.class_perk_ids(self.class_index)
-            if level != "Vanilla":
-                for perk_id in catalog.pool_ids("perks"):
-                    if perk_id not in catalog.class_core_ids():
-                        ids.append(perk_id)
-
-        if can_empty:
+        ids = catalog.options_for_slot(
+            slot,
+            self.class_index,
+            self._cheat(),
+            catalog.equipped_on_class(self.app.lines, self.class_index),
+        )
+        if can_empty and catalog.RANDOM_MODULE_ID not in ids:
             ids = [catalog.RANDOM_MODULE_ID] + ids
         return unique(ids)
 
