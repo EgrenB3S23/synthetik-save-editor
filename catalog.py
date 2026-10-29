@@ -60,6 +60,16 @@ def _entries(file_name: str, key: str) -> list[dict]:
     return list(data.get(key) or [])
 
 
+def labeled(object_id: str | None, multiline: bool = True) -> str:
+    """In-game name plus the save value, for the card and picker."""
+    if not object_id:
+        return "(empty)"
+    name = display_name(object_id)
+    if name == object_id:
+        return object_id
+    return f"{name}\n{object_id}" if multiline else f"{name}  ({object_id})"
+
+
 def display_name(object_id: str | None) -> str:
     if not object_id:
         return "(empty)"

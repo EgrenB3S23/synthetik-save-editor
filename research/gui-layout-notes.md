@@ -79,3 +79,11 @@ Starting items (e.g. Field Supply) appear both in the loadout and in the item to
 2. Click → chooser list (tiered + filter), like the pistol picker.
 3. Separate Items / Weapons views for tokens, or a split panel: list + three token types as marks you can place/remove (4 each).
 4. Class switcher (Classes tab) — no screenshot yet; 8 subclasses.
+
+## Restriction levels in the GUI (session setting)
+
+- **Vanilla:** items currently on that class in the save; that class group's perks; starter pistols (all 15 in pool — class-exclusive pistol lists not fully mapped yet).
+- **Omniclass:** any starter-pool item/perk/pistol of the matching slot type.
+- **Omnislots:** any pool object in any slot; class cores become clickable.
+
+Cores stay locked at Vanilla/Omniclass. Empty → RANDOM MODULE still only on the 2 item + 2 perk slots.

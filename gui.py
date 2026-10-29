@@ -1,22 +1,23 @@
-"""Graphical loadout editor (tkinter prototype).
+"""Graphical editor. Loadout card is one view; perk boosts, data, and presets are others.
 
-Click a slot on the class card, pick from the list, then write to the save.
-Game logic stays in loadouts.py / savefile.py / catalog.py.
+Game logic stays in loadouts.py / savefile.py / catalog.py / edits.py.
 """
 
 from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import filedialog, messagebox, simpledialog
 
 import catalog
 import edits
 import loadouts
+import save_paths
 import savefile
+import variables
 
-# Stop listing picker rows after this many matches. Easy to change.
 FILTER_MATCH_LIMIT = 40
+FILE_POLL_MS = 2000
 
 GROUP_COLORS = {
     "Guardian": "#3D6EA8",
@@ -28,9 +29,10 @@ GROUP_COLORS = {
 BG = "#1B2740"
 FG = "#F4F6FA"
 MUTED = "#8A9BB5"
+PANEL = "#121A2B"
+NAV = "#243044"
 
-# Visible card rows: (slot index or None, label, can_edit, can_empty)
-# Slot mapping from research/gui-layout-notes.md — 1/2/8 still unconfirmed.
+# (slot, label, vanilla_editable, can_empty)
 CARD_ROWS = [
     (0, "Class memory module", False, False),
     (9, "Pistol", True, False),
@@ -41,6 +43,8 @@ CARD_ROWS = [
     (7, "Class perk 2", True, True),
 ]
 
+RESTRICTIONS = ("Vanilla", "Omniclass", "Omnislots")
+
 
 def make_frame(parent, **kwargs) -> tk.Frame:
     kwargs.setdefault("bg", BG)
@@ -48,7 +52,7 @@ def make_frame(parent, **kwargs) -> tk.Frame:
     return tk.Frame(parent, **kwargs)
 
 
-def make_label(parent, text: str, **kwargs) -> tk.Label:
+def make_label(parent, text: str = "", **kwargs) -> tk.Label:
     kwargs.setdefault("bg", parent.cget("bg") if isinstance(parent, tk.Frame) else BG)
     kwargs.setdefault("fg", FG)
     kwargs.setdefault("anchor", "w")
@@ -69,7 +73,7 @@ def make_button(parent, text: str, command, **kwargs) -> tk.Button:
 
 
 def make_entry(parent, **kwargs) -> tk.Entry:
-    kwargs.setdefault("bg", "#121A2B")
+    kwargs.setdefault("bg", PANEL)
     kwargs.setdefault("fg", FG)
     kwargs.setdefault("insertbackground", FG)
     kwargs.setdefault("relief", "flat")
@@ -77,28 +81,203 @@ def make_entry(parent, **kwargs) -> tk.Entry:
     return tk.Entry(parent, **kwargs)
 
 
-class LoadoutWindow:
+def unique(ids: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out = []
+    for object_id in ids:
+        if object_id and object_id not in seen:
+            seen.add(object_id)
+            out.append(object_id)
+    return out
+
+
+class EditorApp:
     def __init__(self, save_path: Path) -> None:
         self.save_path = save_path
         self.lines = savefile.read_lines(save_path)
-        self.class_index, self.subclass_index, _ = loadouts.SUBCLASSES[6]  # Engineer first
-        self.loadout = loadouts.read_loadout(self.lines, self.class_index, self.subclass_index)
-        self.dirty = False
-        self.picking_slot: int | None = None
+        self._mtime = self._read_mtime()
 
         self.root = tk.Tk()
-        self.filter_var = tk.StringVar(master=self.root)
-        self.root.title("Synthetik Save Editor — loadouts")
+        self.root.title("Synthetik Save Editor")
         self.root.configure(bg=BG)
-        self.root.minsize(900, 640)
+        self.root.minsize(980, 700)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self._status = tk.StringVar(value=f"Save: {save_path}")
+        self._status = tk.StringVar(master=self.root, value=f"Save: {save_path}")
+        self._path_text = tk.StringVar(master=self.root, value=str(save_path))
+        self.views: dict[str, tk.Frame] = {}
+        self.current_view = "loadout"
+        self.loadout_view: LoadoutView | None = None
+        self.perks_view: PerksView | None = None
+        self.data_view: DataView | None = None
+        self.presets_view: PresetsView | None = None
+
         self._build()
-        self._refresh_card()
+        self.root.after(FILE_POLL_MS, self._poll_file)
 
     def run(self) -> None:
         self.root.mainloop()
+
+    def _read_mtime(self) -> float:
+        try:
+            return self.save_path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def reload_from_disk(self, quiet: bool = False) -> None:
+        self.lines = savefile.read_lines(self.save_path)
+        self._mtime = self._read_mtime()
+        if self.loadout_view:
+            self.loadout_view.on_save_reloaded()
+        if self.perks_view:
+            self.perks_view.refresh()
+        if self.data_view:
+            self.data_view.refresh()
+        if self.presets_view:
+            self.presets_view.refresh()
+        if not quiet:
+            self._status.set("Reloaded from save.")
+
+    def apply_and_refresh(self, edit_function, message: str) -> None:
+        edits.apply_edit(self.save_path, edit_function)
+        self.reload_from_disk(quiet=True)
+        self._status.set(message)
+
+    def _build(self) -> None:
+        header = make_frame(self.root)
+        header.pack(fill="x", padx=12, pady=(12, 6))
+        make_label(header, "Save file", fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w")
+        path_row = make_frame(header)
+        path_row.pack(fill="x")
+        make_label(path_row, "", textvariable=self._path_text, font=("Segoe UI", 9)).pack(
+            side="left", fill="x", expand=True
+        )
+        make_button(path_row, "Change…", self._change_save, bg=NAV, activebackground="#334866").pack(side="right")
+
+        nav = make_frame(self.root)
+        nav.pack(fill="x", padx=12, pady=(0, 6))
+        for key, label in (
+            ("loadout", "Loadout"),
+            ("perks", "Perk boosts"),
+            ("data", "Data"),
+            ("presets", "Presets"),
+        ):
+            make_button(
+                nav, label, lambda key=key: self._show(key), bg=NAV, activebackground="#334866"
+            ).pack(side="left", padx=(0, 6))
+
+        self.body = make_frame(self.root)
+        self.body.pack(fill="both", expand=True, padx=12, pady=6)
+
+        self.loadout_view = LoadoutView(self.body, self)
+        self.perks_view = PerksView(self.body, self)
+        self.data_view = DataView(self.body, self)
+        self.presets_view = PresetsView(self.body, self)
+        self.views = {
+            "loadout": self.loadout_view.frame,
+            "perks": self.perks_view.frame,
+            "data": self.data_view.frame,
+            "presets": self.presets_view.frame,
+        }
+        self._show("loadout")
+
+        bottom = make_frame(self.root)
+        bottom.pack(fill="x", padx=12, pady=(0, 8))
+        make_button(
+            bottom, "Reload from save", self._reload_clicked, bg="#3A4A66", activebackground="#4A5A76"
+        ).pack(side="left")
+        make_label(bottom, "", textvariable=self._status, fg=MUTED).pack(side="left", padx=12)
+
+        make_label(
+            self.root,
+            "Close Synthetik before Write / applying edits. Reload picks up changes the game wrote.",
+            fg=MUTED,
+            font=("Segoe UI", 9),
+        ).pack(anchor="w", padx=12, pady=(0, 10))
+
+    def _show(self, key: str) -> None:
+        if key != "loadout" and self.loadout_view and self.loadout_view.dirty:
+            if not messagebox.askyesno("Unsaved loadout", "Discard unsaved loadout slot changes?"):
+                return
+            self.loadout_view.discard_dirty()
+        self.current_view = key
+        for name, frame in self.views.items():
+            frame.pack_forget()
+        self.views[key].pack(fill="both", expand=True)
+        if key == "perks":
+            self.perks_view.refresh()
+        elif key == "data":
+            self.data_view.refresh()
+        elif key == "presets":
+            self.presets_view.refresh()
+
+    def _change_save(self) -> None:
+        if self.loadout_view and self.loadout_view.dirty:
+            if not messagebox.askyesno("Unsaved loadout", "Discard unsaved loadout slot changes?"):
+                return
+        chosen = filedialog.askopenfilename(
+            title="Choose Save.sav",
+            filetypes=[("Synthetik save", "*.sav"), ("All files", "*.*")],
+        )
+        if not chosen:
+            return
+        path = Path(chosen)
+        if not path.is_file():
+            messagebox.showerror("Not found", str(path))
+            return
+        self.save_path = path
+        save_paths.save_last_save_path(path)
+        self._path_text.set(str(path))
+        self.reload_from_disk()
+        self._status.set(f"Using {path}")
+
+    def _reload_clicked(self) -> None:
+        if self.loadout_view and self.loadout_view.dirty:
+            if not messagebox.askyesno("Reload", "Discard unsaved loadout slot changes?"):
+                return
+            self.loadout_view.discard_dirty()
+        self.reload_from_disk()
+
+    def _poll_file(self) -> None:
+        mtime = self._read_mtime()
+        if mtime and mtime != self._mtime:
+            if self.loadout_view and self.loadout_view.dirty:
+                self._status.set("Save file changed on disk. Reload to pick up game changes.")
+            else:
+                self.reload_from_disk(quiet=True)
+                self._status.set("Save file changed on disk — reloaded.")
+        self.root.after(FILE_POLL_MS, self._poll_file)
+
+    def _on_close(self) -> None:
+        if self.loadout_view and self.loadout_view.dirty:
+            if not messagebox.askyesno("Quit", "You have unsaved loadout changes. Quit anyway?"):
+                return
+        self.root.destroy()
+
+
+class LoadoutView:
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        self.class_index, self.subclass_index, _ = loadouts.SUBCLASSES[6]
+        self.loadout = loadouts.read_loadout(app.lines, self.class_index, self.subclass_index)
+        self.dirty = False
+        self.picking_slot: int | None = None
+        self.picking_can_empty = False
+        self.filter_var = tk.StringVar(master=app.root)
+        self.restriction = tk.StringVar(master=app.root, value="Omniclass")
+        self._build()
+        self._refresh_card()
+
+    def discard_dirty(self) -> None:
+        self.dirty = False
+        self.loadout = loadouts.read_loadout(self.app.lines, self.class_index, self.subclass_index)
+
+    def on_save_reloaded(self) -> None:
+        self.dirty = False
+        self.loadout = loadouts.read_loadout(self.app.lines, self.class_index, self.subclass_index)
+        self._refresh_card()
+        self._fill_picker()
 
     def _group(self) -> str:
         return catalog.CLASS_GROUP_BY_INDEX[self.class_index]
@@ -107,14 +286,13 @@ class LoadoutWindow:
         return GROUP_COLORS[self._group()]
 
     def _build(self) -> None:
-        top = make_frame(self.root)
-        top.pack(fill="x", padx=12, pady=(12, 8))
+        top = make_frame(self.frame)
+        top.pack(fill="x")
         make_label(top, "Class", font=("Segoe UI", 9), fg=MUTED).pack(anchor="w")
         classes = make_frame(top)
-        classes.pack(fill="x", pady=(4, 0))
-        for index, (c, s, name) in enumerate(loadouts.SUBCLASSES):
-            group = catalog.CLASS_GROUP_BY_INDEX[c]
-            color = GROUP_COLORS[group]
+        classes.pack(fill="x", pady=(4, 6))
+        for c, s, name in loadouts.SUBCLASSES:
+            color = GROUP_COLORS[catalog.CLASS_GROUP_BY_INDEX[c]]
             make_button(
                 classes,
                 name,
@@ -123,8 +301,26 @@ class LoadoutWindow:
                 activebackground=color,
             ).pack(side="left", padx=(0, 6), pady=2)
 
-        body = make_frame(self.root)
-        body.pack(fill="both", expand=True, padx=12, pady=8)
+        rest = make_frame(top)
+        rest.pack(fill="x", pady=(0, 6))
+        make_label(rest, "Restriction", fg=MUTED).pack(side="left", padx=(0, 8))
+        for level in RESTRICTIONS:
+            tk.Radiobutton(
+                rest,
+                text=level,
+                variable=self.restriction,
+                value=level,
+                command=self._on_restriction,
+                bg=BG,
+                fg=FG,
+                selectcolor=NAV,
+                activebackground=BG,
+                activeforeground=FG,
+                font=("Segoe UI", 10),
+            ).pack(side="left", padx=(0, 10))
+
+        body = make_frame(self.frame)
+        body.pack(fill="both", expand=True)
         body.columnconfigure(1, weight=1)
         body.rowconfigure(0, weight=1)
 
@@ -150,12 +346,12 @@ class LoadoutWindow:
         self.filter_entry.grid(row=0, column=1, sticky="ew")
         self.filter_var.trace_add("write", lambda *_: self._fill_picker())
 
-        self.picker_canvas = tk.Canvas(picker, bg="#121A2B", highlightthickness=0)
+        self.picker_canvas = tk.Canvas(picker, bg=PANEL, highlightthickness=0)
         scroll = tk.Scrollbar(picker, command=self.picker_canvas.yview)
         self.picker_canvas.configure(yscrollcommand=scroll.set)
         self.picker_canvas.grid(row=3, column=0, sticky="nsew")
         scroll.grid(row=3, column=1, sticky="ns")
-        self.picker_list = make_frame(self.picker_canvas, bg="#121A2B")
+        self.picker_list = make_frame(self.picker_canvas, bg=PANEL)
         self.picker_window = self.picker_canvas.create_window((0, 0), window=self.picker_list, anchor="nw")
         self.picker_list.bind(
             "<Configure>",
@@ -165,77 +361,69 @@ class LoadoutWindow:
             "<Configure>",
             lambda event: self.picker_canvas.itemconfigure(self.picker_window, width=event.width),
         )
-        self.picker_canvas.bind("<Enter>", lambda _: self._bind_mousewheel(True))
-        self.picker_canvas.bind("<Leave>", lambda _: self._bind_mousewheel(False))
+        self.picker_canvas.bind("<Enter>", lambda _: self._bind_wheel(True))
+        self.picker_canvas.bind("<Leave>", lambda _: self._bind_wheel(False))
 
-        bottom = make_frame(self.root)
-        bottom.pack(fill="x", padx=12, pady=(0, 12))
+        actions = make_frame(self.frame)
+        actions.pack(fill="x", pady=(8, 0))
         make_button(
-            bottom, "Write to save", self._write_save, bg="#2E6B4F", activebackground="#3D8B65"
+            actions, "Write loadout to save", self._write_save, bg="#2E6B4F", activebackground="#3D8B65"
         ).pack(side="left")
-        make_button(
-            bottom, "Reload from save", self._reload, bg="#3A4A66", activebackground="#4A5A76"
-        ).pack(side="left", padx=8)
-        make_label(bottom, "", textvariable=self._status, fg=MUTED).pack(side="left", padx=12)
 
-        note = (
-            "Prototype: pistol / 2 items / 2 perks. Cores are locked. "
-            "Close Synthetik before writing. Tokens not in this window yet."
-        )
-        make_label(self.root, note, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(0, 10))
+    def _on_restriction(self) -> None:
+        self._refresh_card()
+        self._fill_picker()
 
-    def _bind_mousewheel(self, on: bool) -> None:
+    def _bind_wheel(self, on: bool) -> None:
         if on:
-            self.root.bind_all("<MouseWheel>", self._on_mousewheel)
+            self.app.root.bind_all("<MouseWheel>", self._on_wheel)
         else:
-            self.root.unbind_all("<MouseWheel>")
+            self.app.root.unbind_all("<MouseWheel>")
 
-    def _on_mousewheel(self, event) -> None:
+    def _on_wheel(self, event) -> None:
         self.picker_canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def _select_class(self, class_index: int, subclass_index: int) -> None:
         if (class_index, subclass_index) == (self.class_index, self.subclass_index):
             return
         if self.dirty and not messagebox.askyesno(
-            "Unsaved changes",
-            "This class has unsaved slot changes. Switch anyway and discard them?",
+            "Unsaved changes", "Discard unsaved slot changes for this class?"
         ):
             return
         self.class_index = class_index
         self.subclass_index = subclass_index
-        self.loadout = loadouts.read_loadout(self.lines, class_index, subclass_index)
         self.dirty = False
+        self.loadout = loadouts.read_loadout(self.app.lines, class_index, subclass_index)
         self.picking_slot = None
         self.filter_var.set("")
         self._refresh_card()
         self._fill_picker()
-        self._status.set(f"Viewing {loadouts.subclass_name(class_index, subclass_index)}")
+        self.app._status.set(f"Viewing {loadouts.subclass_name(class_index, subclass_index)}")
+
+    def _cores_editable(self) -> bool:
+        return self.restriction.get() == "Omnislots"
 
     def _refresh_card(self) -> None:
         for child in self.card_inner.winfo_children():
             child.destroy()
-
         accent = self._accent()
         name = loadouts.subclass_name(self.class_index, self.subclass_index)
         header = make_frame(self.card_inner, bg=accent, padx=12, pady=10)
         header.pack(fill="x")
         make_label(header, name.upper(), bg=accent, font=("Segoe UI", 14, "bold")).pack(anchor="w")
         make_label(header, self._group(), bg=accent, font=("Segoe UI", 9)).pack(anchor="w")
-
-        make_label(
-            self.card_inner, "LOADOUT", bg=accent, font=("Segoe UI", 9, "bold"), padx=12
-        ).pack(fill="x", pady=(8, 4))
+        make_label(self.card_inner, "LOADOUT", bg=accent, font=("Segoe UI", 9, "bold"), padx=12).pack(
+            fill="x", pady=(8, 4)
+        )
 
         slots = self.loadout["slots"]
-        for slot, label, can_edit, can_empty in CARD_ROWS:
-            value = slots[slot] if slot is not None else None
+        for slot, label, vanilla_edit, can_empty in CARD_ROWS:
+            can_edit = vanilla_edit or self._cores_editable()
+            value = slots[slot]
             row = make_frame(self.card_inner, bg=accent, padx=12, pady=6)
             row.pack(fill="x")
-            shown = catalog.display_name(value)
             extra = "  +25%" if slot == 6 else ""
-            if value == catalog.RANDOM_MODULE_ID:
-                shown = "RANDOM MODULE"
-            text = f"{label}\n{shown}{extra}"
+            text = f"{label}\n{catalog.labeled(value)}{extra}"
             if can_edit:
                 make_button(
                     row,
@@ -249,7 +437,6 @@ class LoadoutWindow:
                 ).pack(fill="x")
             else:
                 make_label(row, text, bg=accent, justify="left").pack(anchor="w")
-
         self.card.configure(bg=accent)
         self.card_inner.configure(bg=accent)
 
@@ -262,32 +449,45 @@ class LoadoutWindow:
         self._fill_picker()
         self.filter_entry.focus_set()
 
+    def _items_on_this_class(self) -> list[str]:
+        ids = []
+        for subclass_index in (0, 1):
+            current = loadouts.read_loadout(self.app.lines, self.class_index, subclass_index)
+            for slot in (3, 4, 5):
+                value = current["slots"][slot]
+                if value and value.startswith("obj_item"):
+                    ids.append(value)
+        return unique(ids)
+
     def _options_for_slot(self, slot: int, can_empty: bool) -> list[str]:
-        if slot == 9:
+        level = self.restriction.get()
+        kind = "weapons" if slot == 9 else "items" if slot in (3, 4, 5) else "perks"
+
+        if level == "Omnislots":
+            ids = catalog.pool_ids("weapons") + catalog.pool_ids("items") + catalog.pool_ids("perks")
+        elif kind == "weapons":
             ids = catalog.pool_ids("weapons")
-        elif slot in (4, 5):
-            ids = catalog.pool_ids("items")
+        elif kind == "items":
+            if level == "Vanilla":
+                ids = self._items_on_this_class() or catalog.pool_ids("items")
+            else:
+                ids = catalog.pool_ids("items")
         else:
             ids = catalog.class_perk_ids(self.class_index)
-            for perk_id in catalog.pool_ids("perks"):
-                if perk_id not in ids and perk_id not in catalog.class_core_ids():
-                    ids.append(perk_id)
+            if level != "Vanilla":
+                for perk_id in catalog.pool_ids("perks"):
+                    if perk_id not in catalog.class_core_ids():
+                        ids.append(perk_id)
+
         if can_empty:
-            ids = [catalog.RANDOM_MODULE_ID] + [i for i in ids if i != catalog.RANDOM_MODULE_ID]
-        seen: set[str] = set()
-        unique = []
-        for object_id in ids:
-            if object_id not in seen:
-                seen.add(object_id)
-                unique.append(object_id)
-        return unique
+            ids = [catalog.RANDOM_MODULE_ID] + ids
+        return unique(ids)
 
     def _fill_picker(self) -> None:
         for child in self.picker_list.winfo_children():
             child.destroy()
-
         if self.picking_slot is None:
-            make_label(self.picker_list, "Click a slot on the card.", bg="#121A2B", fg=MUTED).pack(
+            make_label(self.picker_list, "Click a slot on the card.", bg=PANEL, fg=MUTED).pack(
                 anchor="w", padx=8, pady=8
             )
             return
@@ -306,11 +506,10 @@ class LoadoutWindow:
             shown += 1
             group = catalog.class_group_of(object_id)
             color = GROUP_COLORS.get(group or "", "#2A3548")
-            prefix = "▸ " if object_id == current else "  "
-            label = f"{prefix}{catalog.display_name(object_id)}"
+            mark = "▸ " if object_id == current else "  "
             make_button(
                 self.picker_list,
-                label,
+                mark + catalog.labeled(object_id, multiline=False),
                 lambda object_id=object_id: self._choose(object_id),
                 bg=color,
                 activebackground=color,
@@ -319,18 +518,17 @@ class LoadoutWindow:
             ).pack(fill="x", padx=4, pady=2)
 
         if shown == 0:
-            make_label(self.picker_list, "No matches. Keep typing or clear the filter.", bg="#121A2B", fg=MUTED).pack(
+            make_label(self.picker_list, "No matches. Keep typing or clear the filter.", bg=PANEL, fg=MUTED).pack(
                 anchor="w", padx=8, pady=8
             )
         elif truncated:
             make_label(
                 self.picker_list,
                 f"Showing first {FILTER_MATCH_LIMIT} matches, keep typing to narrow down.",
-                bg="#121A2B",
+                bg=PANEL,
                 fg=MUTED,
                 font=("Segoe UI", 9),
             ).pack(anchor="w", padx=8, pady=8)
-
         self.picker_canvas.yview_moveto(0)
 
     def _choose(self, object_id: str) -> None:
@@ -340,7 +538,7 @@ class LoadoutWindow:
         self.dirty = True
         self._refresh_card()
         self._fill_picker()
-        self._status.set("Changed in this window only. Click Write to save to apply.")
+        self.app._status.set("Loadout changed in this window. Click Write loadout to save.")
 
     def _write_save(self) -> None:
         if any(slot is None for slot in self.loadout["slots"]):
@@ -349,41 +547,253 @@ class LoadoutWindow:
         name = loadouts.subclass_name(self.class_index, self.subclass_index)
         if not messagebox.askyesno(
             "Write to save",
-            f"Write this {name} loadout to the save file?\n\n"
-            "Close Synthetik first. A timestamped backup will be created.",
+            f"Write this {name} loadout to the save file?\n\nClose Synthetik first. A backup will be created.",
         ):
             return
-
-        preset = loadouts.build_preset(self.lines, self.class_index, self.subclass_index, "gui")
+        preset = loadouts.build_preset(self.app.lines, self.class_index, self.subclass_index, "gui")
         preset["slots"] = list(self.loadout["slots"])
         preset["tokens"] = dict(self.loadout["tokens"])
         problem = loadouts.validate_preset(preset)
         if problem:
             messagebox.showerror("Could not write", problem)
             return
-
-        edits.apply_edit(self.save_path, lambda lines: loadouts.apply_preset(lines, preset))
-        self.lines = savefile.read_lines(self.save_path)
-        self.loadout = loadouts.read_loadout(self.lines, self.class_index, self.subclass_index)
+        self.app.apply_and_refresh(
+            lambda lines: loadouts.apply_preset(lines, preset),
+            f"Wrote {name} loadout. Backup created next to the save file.",
+        )
         self.dirty = False
-        self._refresh_card()
-        self._status.set(f"Wrote {name} to save. Backup created next to the save file.")
 
-    def _reload(self) -> None:
-        if self.dirty and not messagebox.askyesno("Reload", "Discard unsaved slot changes?"):
-            return
-        self.lines = savefile.read_lines(self.save_path)
-        self.loadout = loadouts.read_loadout(self.lines, self.class_index, self.subclass_index)
-        self.dirty = False
-        self._refresh_card()
-        self._fill_picker()
-        self._status.set("Reloaded from save.")
 
-    def _on_close(self) -> None:
-        if self.dirty and not messagebox.askyesno("Quit", "You have unsaved slot changes. Quit anyway?"):
+class PerksView:
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        self.value_var = tk.StringVar(master=app.root, value=variables.PERK_DAILY_MODULE_BOOST_VALUE)
+        self._build()
+
+    def _build(self) -> None:
+        make_label(self.frame, "Perk daily module boosts", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        row = make_frame(self.frame)
+        row.pack(fill="x", pady=8)
+        make_label(row, "Value").pack(side="left", padx=(0, 8))
+        make_entry(row, textvariable=self.value_var, width=10).pack(side="left")
+        make_button(
+            row,
+            "Set all 62 perks",
+            self._set_all,
+            bg="#2E6B4F",
+            activebackground="#3D8B65",
+        ).pack(side="left", padx=8)
+
+        self.summary = make_label(self.frame, "", fg=MUTED, justify="left")
+        self.summary.pack(anchor="w", pady=(0, 8))
+
+        canvas = tk.Canvas(self.frame, bg=PANEL, highlightthickness=0)
+        scroll = tk.Scrollbar(self.frame, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.list_frame = make_frame(canvas, bg=PANEL)
+        window = canvas.create_window((0, 0), window=self.list_frame, anchor="nw")
+        self.list_frame.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+        self._perk_canvas = canvas
+
+    def refresh(self) -> None:
+        for child in self.list_frame.winfo_children():
+            child.destroy()
+        counts, missing = savefile.count_main_perk_boost_values(self.app.lines)
+        lines = []
+        for raw, count in sorted(counts.items(), key=lambda item: float(item[0])):
+            lines.append(f"{savefile.format_display_value(raw)} : {count} perks")
+        if missing:
+            lines.append(f"Not found: {missing}")
+        self.summary.configure(text="\n".join(lines) or "No perk values found.")
+
+        perk_values = savefile.get_main_perk_values(self.app.lines)
+        for class_name, perk_ids in variables.PERK_CLASSES:
+            make_label(
+                self.list_frame, class_name, bg=PANEL, font=("Segoe UI", 11, "bold"), fg=GROUP_COLORS.get(class_name, FG)
+            ).pack(anchor="w", padx=8, pady=(10, 2))
+            for perk_id in perk_ids:
+                raw = perk_values.get(perk_id)
+                shown = savefile.format_display_value(raw) if raw is not None else "not found"
+                object_id = f"obj_perk_{perk_id}"
+                make_button(
+                    self.list_frame,
+                    f"{catalog.labeled(object_id, multiline=False)}  =  {shown}",
+                    lambda perk_id=perk_id: self._set_one(perk_id),
+                    bg="#2A3548",
+                    activebackground="#3A4558",
+                    anchor="w",
+                    justify="left",
+                ).pack(fill="x", padx=8, pady=1)
+
+    def _parse_value(self) -> str | None:
+        text = self.value_var.get().strip() or variables.PERK_DAILY_MODULE_BOOST_VALUE
+        try:
+            float(text)
+        except ValueError:
+            messagebox.showerror("Invalid number", text)
+            return None
+        return text
+
+    def _set_all(self) -> None:
+        value = self._parse_value()
+        if value is None:
             return
-        self.root.destroy()
+        if not messagebox.askyesno("Set all perks", f"Set all 62 perk boosts to {value}?"):
+            return
+        self.app.apply_and_refresh(
+            lambda lines: edits.set_all_perk_daily_module_boosts(lines, value),
+            f"Set all perk boosts to {value}.",
+        )
+
+    def _set_one(self, perk_id: str) -> None:
+        value = self._parse_value()
+        if value is None:
+            return
+        self.app.apply_and_refresh(
+            lambda lines: edits.set_single_perk_daily_module_boost(lines, perk_id, value),
+            f"Set {perk_id} to {value}.",
+        )
+
+
+class DataView:
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        self.value_var = tk.StringVar(master=app.root, value="1000")
+        make_label(self.frame, "Data (save variable: currency)", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        self.current = make_label(self.frame, "", fg=MUTED)
+        self.current.pack(anchor="w", pady=8)
+        row = make_frame(self.frame)
+        row.pack(anchor="w")
+        make_label(row, "Set to").pack(side="left", padx=(0, 8))
+        make_entry(row, textvariable=self.value_var, width=12).pack(side="left")
+        make_button(row, "Apply", self._apply, bg="#2E6B4F", activebackground="#3D8B65").pack(side="left", padx=8)
+        make_button(
+            row, "1000", lambda: self.value_var.set("1000"), bg=NAV, activebackground="#334866"
+        ).pack(side="left")
+
+    def refresh(self) -> None:
+        raw = savefile.get_variable_value(self.app.lines, variables.DATA_VARIABLE)
+        shown = savefile.format_display_value(raw) if raw is not None else "unknown"
+        self.current.configure(text=f"Current: {shown}")
+
+    def _apply(self) -> None:
+        text = self.value_var.get().strip()
+        try:
+            float(text)
+        except ValueError:
+            messagebox.showerror("Invalid number", text)
+            return
+        if not messagebox.askyesno("Set data", f"Set data (currency) to {text}?"):
+            return
+
+        def edit(lines: list[str]) -> tuple[list[str], str]:
+            updated, found = savefile.set_variable(lines, variables.DATA_VARIABLE, text)
+            if found:
+                return updated, f"Set data to {savefile.format_display_value(text)}."
+            return updated, f"Variable '{variables.DATA_VARIABLE}' was not found."
+
+        self.app.apply_and_refresh(edit, f"Set data to {text}.")
+
+
+class PresetsView:
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        self.selected: tuple[Path, dict] | None = None
+        make_label(self.frame, "Loadout presets", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        self.folder = make_label(self.frame, "", fg=MUTED)
+        self.folder.pack(anchor="w", pady=(0, 6))
+
+        buttons = make_frame(self.frame)
+        buttons.pack(fill="x", pady=4)
+        make_button(buttons, "Refresh", self.refresh, bg=NAV, activebackground="#334866").pack(side="left", padx=(0, 6))
+        make_button(buttons, "Save current class…", self._save, bg="#2E6B4F", activebackground="#3D8B65").pack(
+            side="left", padx=(0, 6)
+        )
+        make_button(buttons, "Load selected", self._load, bg="#3A4A66", activebackground="#4A5A76").pack(
+            side="left", padx=(0, 6)
+        )
+
+        self.list_box = tk.Listbox(
+            self.frame, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=8
+        )
+        self.list_box.pack(fill="x", pady=6)
+        self.list_box.bind("<<ListboxSelect>>", lambda _: self._on_select())
+
+        self.detail = tk.Text(self.frame, bg=PANEL, fg=FG, height=16, font=("Consolas", 9), wrap="none")
+        self.detail.pack(fill="both", expand=True)
+
+    def refresh(self) -> None:
+        self.folder.configure(text=str(loadouts.loadouts_dir()))
+        self.list_box.delete(0, "end")
+        self.entries: list[tuple[Path, dict | None, str | None]] = loadouts.load_presets()
+        for path, preset, problem in self.entries:
+            if preset is None:
+                self.list_box.insert("end", f"{path.name}  [invalid: {problem}]")
+            else:
+                self.list_box.insert("end", f"{preset['subclass']} : {preset['name']}  ({path.name})")
+        self.selected = None
+        self.detail.delete("1.0", "end")
+
+    def _on_select(self) -> None:
+        selection = self.list_box.curselection()
+        if not selection:
+            return
+        path, preset, problem = self.entries[selection[0]]
+        self.selected = (path, preset) if preset else None
+        self.detail.delete("1.0", "end")
+        if preset is None:
+            self.detail.insert("end", problem or "invalid")
+            return
+        lines = [f"{preset['subclass']}: {preset['name']}", f"File: {path.name}", ""]
+        for slot, value in enumerate(preset["slots"]):
+            lines.append(f"Slot {slot}: {catalog.labeled(value, multiline=False)}")
+        lines.append("")
+        for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
+            lines.append(f"{description}: {loadouts.display_tokens(preset['tokens'][family])}")
+        self.detail.insert("end", "\n".join(lines))
+
+    def _save(self) -> None:
+        view = self.app.loadout_view
+        if view is None:
+            return
+        name = simpledialog.askstring("Save preset", "Name this preset:", parent=self.app.root)
+        if not name:
+            return
+        preset = loadouts.build_preset(self.app.lines, view.class_index, view.subclass_index, name)
+        if view.dirty:
+            preset["slots"] = list(view.loadout["slots"])
+        problem = loadouts.validate_preset(preset)
+        if problem:
+            messagebox.showerror("Could not save", problem)
+            return
+        path = loadouts.loadouts_dir() / loadouts.preset_filename(preset)
+        if path.exists() and not messagebox.askyesno("Overwrite", f"{path.name} exists. Overwrite?"):
+            return
+        loadouts.write_preset(preset, path)
+        self.refresh()
+        self.app._status.set(f"Saved {path.name}")
+
+    def _load(self) -> None:
+        if self.selected is None:
+            messagebox.showinfo("No preset", "Select a valid preset first.")
+            return
+        path, preset = self.selected
+        if not messagebox.askyesno(
+            "Load preset",
+            f"Load '{preset['name']}' into {preset['subclass']}?\nClose Synthetik first. A backup will be created.",
+        ):
+            return
+        self.app.apply_and_refresh(
+            lambda lines: loadouts.apply_preset(lines, preset),
+            f"Loaded '{preset['name']}' into {preset['subclass']}.",
+        )
 
 
 def open_loadout_editor(save_path: Path) -> None:
-    LoadoutWindow(save_path).run()
+    EditorApp(save_path).run()
