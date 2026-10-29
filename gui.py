@@ -1,4 +1,7 @@
-"""Graphical editor. Loadout card is one view; perk boosts, data, and presets are others.
+"""Graphical editor. Home is a clickable menu matching the CLI.
+
+The loadout card is one destination. Perk boosts, data, presets, backups, and
+viewing save loadouts are the others.
 
 Game logic stays in loadouts.py / savefile.py / catalog.py / edits.py.
 """
@@ -81,6 +84,24 @@ def make_entry(parent, **kwargs) -> tk.Entry:
     return tk.Entry(parent, **kwargs)
 
 
+def make_menu_button(parent, text: str, command) -> tk.Button:
+    """Full-width numbered menu row, CLI-style."""
+    button = make_button(
+        parent,
+        text,
+        command,
+        bg=NAV,
+        activebackground="#334866",
+        anchor="w",
+        justify="left",
+        font=("Segoe UI", 11),
+        padx=14,
+        pady=10,
+    )
+    button.pack(fill="x", pady=3)
+    return button
+
+
 def unique(ids: list[str]) -> list[str]:
     seen: set[str] = set()
     out = []
@@ -106,12 +127,16 @@ class EditorApp:
         self._status = tk.StringVar(master=self.root, value=f"Save: {save_path}")
         self._path_text = tk.StringVar(master=self.root, value=str(save_path))
         self.views: dict[str, tk.Frame] = {}
-        self.current_view = "loadout"
+        self.current_view = "menu"
+        self._back_to = "menu"
+        self.menu_view: MenuView | None = None
+        self.loadout_menu_view: LoadoutMenuView | None = None
         self.loadout_view: LoadoutView | None = None
         self.perks_view: PerksView | None = None
         self.data_view: DataView | None = None
         self.presets_view: PresetsView | None = None
         self.backups_view: BackupsView | None = None
+        self.view_save_view: ViewSaveLoadoutsView | None = None
 
         self._build()
         self.root.after(FILE_POLL_MS, self._poll_file)
@@ -138,6 +163,10 @@ class EditorApp:
             self.presets_view.refresh()
         if self.backups_view:
             self.backups_view.refresh()
+        if self.menu_view:
+            self.menu_view.refresh()
+        if self.view_save_view:
+            self.view_save_view.refresh()
         if not quiet:
             self._status.set("Reloaded from save.")
 
@@ -159,33 +188,32 @@ class EditorApp:
 
         nav = make_frame(self.root)
         nav.pack(fill="x", padx=12, pady=(0, 6))
-        for key, label in (
-            ("loadout", "Loadout"),
-            ("perks", "Perk boosts"),
-            ("data", "Data"),
-            ("presets", "Presets"),
-            ("backups", "Backups"),
-        ):
-            make_button(
-                nav, label, lambda key=key: self._show(key), bg=NAV, activebackground="#334866"
-            ).pack(side="left", padx=(0, 6))
+        self.back_button = make_button(
+            nav, "Back to menu", self._back, bg=NAV, activebackground="#334866"
+        )
 
         self.body = make_frame(self.root)
         self.body.pack(fill="both", expand=True, padx=12, pady=6)
 
+        self.menu_view = MenuView(self.body, self)
+        self.loadout_menu_view = LoadoutMenuView(self.body, self)
         self.loadout_view = LoadoutView(self.body, self)
         self.perks_view = PerksView(self.body, self)
         self.data_view = DataView(self.body, self)
         self.presets_view = PresetsView(self.body, self)
         self.backups_view = BackupsView(self.body, self)
+        self.view_save_view = ViewSaveLoadoutsView(self.body, self)
         self.views = {
+            "menu": self.menu_view.frame,
+            "loadouts": self.loadout_menu_view.frame,
             "loadout": self.loadout_view.frame,
             "perks": self.perks_view.frame,
             "data": self.data_view.frame,
             "presets": self.presets_view.frame,
             "backups": self.backups_view.frame,
+            "view_save": self.view_save_view.frame,
         }
-        self._show("loadout")
+        self._show("menu")
 
         bottom = make_frame(self.root)
         bottom.pack(fill="x", padx=12, pady=(0, 8))
@@ -201,15 +229,21 @@ class EditorApp:
             font=("Segoe UI", 9),
         ).pack(anchor="w", padx=12, pady=(0, 10))
 
-    def _show(self, key: str) -> None:
+    def _show(self, key: str, back: str = "menu") -> None:
         if key != "loadout" and self.loadout_view and self.loadout_view.dirty:
             if not messagebox.askyesno("Unsaved loadout", "Discard unsaved loadout slot changes?"):
                 return
             self.loadout_view.discard_dirty()
         self.current_view = key
+        self._back_to = back
         for name, frame in self.views.items():
             frame.pack_forget()
         self.views[key].pack(fill="both", expand=True)
+        if key == "menu":
+            self.back_button.pack_forget()
+            self.menu_view.refresh()
+        else:
+            self.back_button.pack(side="left")
         if key == "perks":
             self.perks_view.refresh()
         elif key == "data":
@@ -218,6 +252,11 @@ class EditorApp:
             self.presets_view.refresh()
         elif key == "backups":
             self.backups_view.refresh()
+        elif key == "view_save":
+            self.view_save_view.refresh()
+
+    def _back(self) -> None:
+        self._show(self._back_to)
 
     def _change_save(self) -> None:
         if self.loadout_view and self.loadout_view.dirty:
@@ -261,6 +300,137 @@ class EditorApp:
             if not messagebox.askyesno("Quit", "You have unsaved loadout changes. Quit anyway?"):
                 return
         self.root.destroy()
+
+
+class MenuView:
+    """CLI main menu as clickable rows. The loadout card is option 8."""
+
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        make_label(self.frame, "=== Synthetik Save Editor ===", font=("Segoe UI", 16, "bold")).pack(
+            anchor="w", pady=(0, 4)
+        )
+        make_label(
+            self.frame,
+            "Same options as the command-line menu. The graphical loadout editor is one of them.",
+            fg=MUTED,
+        ).pack(anchor="w", pady=(0, 12))
+        self.buttons: dict[str, tk.Button] = {}
+        self._build_buttons()
+
+    def _build_buttons(self) -> None:
+        actions = {
+            "1": lambda: self.app._show("perks"),
+            "2": lambda: self.app._show("perks"),
+            "3": lambda: self.app._show("perks"),
+            "4": lambda: self.app._show("perks"),
+            "5": lambda: self.app._show("data"),
+            "6": self.app._change_save,
+            "7": lambda: self.app._show("loadouts"),
+            "8": lambda: self.app._show("loadout"),
+            "9": lambda: self.app._show("backups"),
+            "0": self.app._on_close,
+        }
+        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"):
+            self.buttons[key] = make_menu_button(self.frame, "", actions[key])
+        self.refresh()
+
+    def refresh(self) -> None:
+        raw = savefile.get_variable_value(self.app.lines, variables.DATA_VARIABLE)
+        if raw is not None:
+            data_option = f"5. Data: Set to a chosen value (current: {savefile.format_display_value(raw)})"
+        else:
+            data_option = "5. Data: Set to a chosen value (current: unknown)"
+        labels = {
+            "1": "1. Perks: Set all class perks' daily boost to chosen value",
+            "2": "2. Perks: Set single class perk's daily boost to chosen value",
+            "3": "3. Perks: Show current class perks' daily boosts",
+            "4": "4. Perks: Randomize daily boosts from a count:value list",
+            "5": data_option,
+            "6": "6. Choose a different save file",
+            "7": "7. Loadouts: View loadouts, save or load presets",
+            "8": "8. Loadouts: Open graphical editor",
+            "9": "9. Restore a backup of this save",
+            "0": "0. Exit",
+        }
+        for key, button in self.buttons.items():
+            button.configure(text=labels[key])
+
+
+class LoadoutMenuView:
+    """CLI loadout submenu as clickable rows."""
+
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        make_label(self.frame, "=== Loadouts ===", font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 12))
+        rows = (
+            ("1. Save a subclass loadout to a preset", lambda: self.app._show("presets", back="loadouts")),
+            ("2. Load a preset into the save", lambda: self.app._show("presets", back="loadouts")),
+            ("3. List saved presets", lambda: self.app._show("presets", back="loadouts")),
+            ("4. View a loadout in the save file", lambda: self.app._show("view_save", back="loadouts")),
+            ("5. View a preset file", lambda: self.app._show("presets", back="loadouts")),
+            ("6. Rename a preset", lambda: self.app._show("presets", back="loadouts")),
+            ("7. Delete a preset", lambda: self.app._show("presets", back="loadouts")),
+            ("8. Graphical loadout editor", lambda: self.app._show("loadout", back="loadouts")),
+            ("0. Back to main menu", lambda: self.app._show("menu")),
+        )
+        for text, command in rows:
+            make_menu_button(self.frame, text, command)
+
+
+class ViewSaveLoadoutsView:
+    """CLI 'view a loadout in the save file' — one subclass or all eight."""
+
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        make_label(self.frame, "Loadouts in the save file", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        make_label(self.frame, "Same listing as the CLI view. Pick one subclass or all eight.", fg=MUTED).pack(
+            anchor="w", pady=(0, 6)
+        )
+        classes = make_frame(self.frame)
+        classes.pack(fill="x", pady=(0, 6))
+        make_button(
+            classes, "All 8", lambda: self._show_all(), bg=NAV, activebackground="#334866"
+        ).pack(side="left", padx=(0, 6))
+        for c, s, name in loadouts.SUBCLASSES:
+            color = GROUP_COLORS[catalog.CLASS_GROUP_BY_INDEX[c]]
+            make_button(
+                classes,
+                name,
+                lambda c=c, s=s: self._show_one(c, s),
+                bg=color,
+                activebackground=color,
+            ).pack(side="left", padx=(0, 4), pady=2)
+
+        self.detail = tk.Text(self.frame, bg=PANEL, fg=FG, font=("Consolas", 9), wrap="none")
+        self.detail.pack(fill="both", expand=True)
+
+    def refresh(self) -> None:
+        self._show_all()
+
+    def _show_one(self, class_index: int, subclass_index: int) -> None:
+        self._render([(class_index, subclass_index)])
+
+    def _show_all(self) -> None:
+        self._render([(c, s) for c, s, _ in loadouts.SUBCLASSES])
+
+    def _render(self, targets: list[tuple[int, int]]) -> None:
+        self.detail.delete("1.0", "end")
+        blocks = []
+        for class_index, subclass_index in targets:
+            loadout = loadouts.read_loadout(self.app.lines, class_index, subclass_index)
+            name = loadouts.subclass_name(class_index, subclass_index)
+            lines = [f"--- {name} ---"]
+            for slot, value in enumerate(loadout["slots"]):
+                lines.append(f"Slot {slot}: {catalog.labeled(value, multiline=False)}")
+            lines.append("")
+            for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
+                lines.append(f"{description}: {loadouts.display_tokens(loadout['tokens'][family], family)}")
+            blocks.append("\n".join(lines))
+        self.detail.insert("end", "\n\n".join(blocks))
 
 
 class LoadoutView:
@@ -684,6 +854,11 @@ class PerksView:
 
     def _build(self) -> None:
         make_label(self.frame, "Perk daily module boosts", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        make_label(
+            self.frame,
+            "CLI options 1–4 live here: set all, click a perk to set one, read current values, or randomize.",
+            fg=MUTED,
+        ).pack(anchor="w")
         row = make_frame(self.frame)
         row.pack(fill="x", pady=8)
         make_label(row, "Value").pack(side="left", padx=(0, 8))

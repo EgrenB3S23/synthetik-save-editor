@@ -44,7 +44,7 @@ python main.py
 - **View current perk boosts**.
 - **Set data** (the `currency` resource) to a chosen value.
 - **Loadout presets**: save one subclass's slots + tokens to a file in `loadouts/`, load it back, rename, delete.
-- **Graphical editor** (`py main.py --gui`): class card, perk boosts, data, presets, backups.
+- **Graphical editor** (`py main.py --gui`): clickable menu matching the CLI. The loadout card is one option; perk boosts, data, presets, backups, and viewing save loadouts are the others.
 - **Restore a backup** of the save the tool created.
 
 ---
