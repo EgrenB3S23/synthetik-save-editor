@@ -49,10 +49,12 @@ See [`save-format-notes.md`](save-format-notes.md) for the save variables, and
   | 5 | 0 | Item, or random perk |
   | 6 | 1 | Perk |
   | 7 | 1 | Perk, or random perk |
-  | 8 | 1 | Random perk in all 8 subclasses (locked slot?) |
+  | 8 | 1 | Often `randomperk`; not on the Engineer class card |
   | 9 | 2 | Starting pistol |
 
-  `obj_perk_randomperk` shows up in perk *and* item slots, so it seems to mean "empty / random".
+  Confirmed: `obj_perk_randomperk` means **empty item or perk loadout slot** (right-click in-game
+  → extra random perk). Never used for tokens (unused token = missing line), pistols, or cores.
+  See [`gui-layout-notes.md`](gui-layout-notes.md).
 - Cross-class already happens in vanilla data: Engineer has `obj_item130_riotguard` in slot 4.
 - The **loadout pool** (everything that has a `tunlock_`/`tpoints_`/`tactive_` entry in the save)
   is 168 entries: 73 perks (incl. 8 class cores), 40 items, 15 starting pistols, 19 artefacts,

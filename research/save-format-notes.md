@@ -17,6 +17,9 @@ subclass 2 exist in the save but look unused.
 `perkslot<slot>class<class><subclass>`, slots 0–9, value = object id.
 Confirmed working: read and written by the loadout preset feature.
 
+`obj_perk_randomperk` = empty **item or perk loadout slot** (right-click in-game). Not used for
+tokens, pistols, or class cores. Unused tokens have no line in the save (`null` in a preset).
+
 ```
 perkslot0class30="obj_perk_raider"
 perkslot3class30="obj_item81_tanto"

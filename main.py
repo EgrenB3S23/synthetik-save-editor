@@ -123,6 +123,7 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
         "4": f"4. {data_option}",
         "5": "5. Choose a different save file",
         "6": "6. Loadouts: View loadouts, save or load presets",
+        "7": "7. Loadouts: Open graphical editor (prototype)",
         "0": "0. Exit",
     }
 
@@ -135,7 +136,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "5", "6", "0"):
+    for key in ("1", "2", "3", "4", "5", "6", "7", "0"):
         print(options[key])
     print()
 
@@ -189,6 +190,10 @@ def run_menu(save_path: Path) -> Path | None:
                 return new_path
         elif choice == "6":
             loadouts.run_loadout_menu(save_path)
+        elif choice == "7":
+            import gui
+
+            gui.open_loadout_editor(save_path)
         elif choice == "0":
             return None
 
@@ -203,11 +208,14 @@ def main() -> None:
     print("Welcome to Egren's Synthetik Save Editor!")
     print()
 
-    if len(sys.argv) > 1:
-        save_path = resolve_user_path(sys.argv[1])
+    argv = [arg for arg in sys.argv[1:] if arg != "--gui"]
+    open_gui = "--gui" in sys.argv[1:]
+
+    if argv:
+        save_path = resolve_user_path(argv[0])
 
         if save_path is None:
-            print(f"Invalid save path: {sys.argv[1]}")
+            print(f"Invalid save path: {argv[0]}")
             save_paths.wait_before_exit()
             sys.exit(1)
 
@@ -222,6 +230,12 @@ def main() -> None:
             if validate_save_path(save_path):
                 remember_save_path(save_path)
                 break
+
+    if open_gui:
+        import gui
+
+        gui.open_loadout_editor(save_path)
+        return
 
     while True:
         result = run_menu(save_path)
