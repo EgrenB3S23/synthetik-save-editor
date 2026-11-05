@@ -81,14 +81,18 @@ Starting items (e.g. Field Supply) appear both in the loadout and in the item to
 3. Separate Items / Weapons views for tokens, or a split panel: list + three token types as marks you can place/remove (4 each).
 4. Class switcher (Classes tab) — no screenshot yet; 8 subclasses.
 
-## Cheat levels (global setting, top of the GUI)
+## Cheat levels (per pick, like MTG formats)
 
-Remembered in the editor config, not in presets.
+Not a global toggle. Clicking a slot opens Vanilla options (as close as we have to the in-game list). A row of cheat-filter buttons widens *this pick only*. The loadout’s legality is the highest cheat level any slot needs: one Omniclass pistol makes the whole card Omniclass.
 
-- **Vanilla:** objects already on that class in the save (fallback: starter pool of the slot type); class-group perks; cores locked.
-- **Omniclass:** any starter-pool item/perk/pistol of the matching slot type. Cores locked.
-- **Uber Omniclass:** Omniclass plus clickable class cores (slot 0 and slot 3). Bonus-track swap still not implemented.
-- **Omnislots:** any starter-pool object in any slot; extra save slots 1, 2, 8 appear on the card.
-- **Unlimited:** any extracted item, weapon, perk, or artefact, any slot.
+Black squares (0–4 filled of 4):
+
+- 0 Vanilla
+- 1 Omniclass
+- 2 Uber Omniclass (cores)
+- 3 Omnislots
+- 4 Unlimited
+
+Shown on the class card (whole loadout) and on each slot. Extra save slots 1, 2, 8 stay on the card because they can be filled by raising the filter.
 
 Empty → RANDOM MODULE still only on item/perk slots that the game can empty.

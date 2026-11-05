@@ -5,6 +5,9 @@ Save.sav
 # Personal loadout presets
 loadouts/
 
+# Local in-game icons cropped from data.win (not redistributed)
+game_icons/
+
 # Personal / local notes
 TODO.md
 .scratch

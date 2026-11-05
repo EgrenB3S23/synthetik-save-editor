@@ -55,11 +55,11 @@ def backup_stamp(path: Path) -> str | None:
     return match.group(1) if match else None
 
 
-def restore_backup(save_path: Path, backup_path: Path) -> Path:
-    """Copy a backup over the live save after first backing up the live file."""
+def restore_backup(save_path: Path, backup_path: Path) -> Path | None:
+    """Copy a backup over the live save. Backs up the live file first if it exists."""
     if backup_path.resolve() == save_path.resolve():
         raise ValueError("Cannot restore the live save over itself.")
-    safety_copy = backup_savefile(save_path)
+    safety_copy = backup_savefile(save_path) if save_path.is_file() else None
     shutil.copy2(backup_path, save_path)
     return safety_copy
 

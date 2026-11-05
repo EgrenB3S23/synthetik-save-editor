@@ -18,6 +18,7 @@ CONFIRMED_NAMES = {
     "obj_item71_sentry": "LMG Sentry Turret",
     "obj_item126_missiledrone": "Missile Drone",
     "obj_item6_reloader": "Field Supply",
+    "obj_item107_ministim": "Magic Mag",
     "obj_weapon_REP_11": "57 Fusion Classic",
     "obj_perk_dodgeheat": "Unceasing",
 }
@@ -37,8 +38,51 @@ CHEAT_LEVELS: list[tuple[str, str]] = [
     ("Omnislots", "Any starter-pool object in any slot."),
     ("Unlimited", "Any item, weapon, perk, or artefact in the game data, any slot."),
 ]
-DEFAULT_CHEAT_LEVEL = "Omniclass"
+DEFAULT_CHEAT_LEVEL = "Vanilla"
+CHEAT_SQUARE_COUNT = 4  # black squares = rank; Vanilla is 0 filled squares
 _SKIP_IDS = {"obj_perk_parent", "obj_item_parent", "obj_weapon_parent"}
+
+SUBCLASS_CORES = {
+    (1, 0): "obj_perk_riotguard",
+    (1, 1): "obj_perk_breacher",
+    (2, 0): "obj_perk_marksman",
+    (2, 1): "obj_perk_assassin",
+    (3, 0): "obj_perk_raider",
+    (3, 1): "obj_perk_assaultgunner",
+    (4, 0): "obj_perk_engineer",
+    (4, 1): "obj_perk_demolisher",
+}
+
+# Starter items seen on each class group. Incomplete vs the full in-game picker.
+VANILLA_ITEMS_BY_CLASS = {
+    1: ["obj_item99_battlecry", "obj_item36_grenade_stun", "obj_item100_breachingcharge"],
+    2: ["obj_item122_targetcpu", "obj_item83_grenade_smoke", "obj_item115_decoy", "obj_item94_dagger"],
+    3: ["obj_item81_tanto", "obj_item55_stim", "obj_item86_commandoflare", "obj_item124_gunner"],
+    4: [
+        "obj_item71_sentry",
+        "obj_item130_riotguard",
+        "obj_item126_missiledrone",
+        "obj_item6_reloader",
+        "obj_item101_resonator",
+    ],
+}
+
+VANILLA_PISTOLS_BY_CLASS = {
+    1: ["obj_weapon_CP_38"],
+    2: ["obj_weapon_DE_94", "obj_weapon_REP_11"],
+    3: ["obj_weapon_HON_34", "obj_weapon_REP_11"],
+    4: [
+        "obj_weapon_PTL_6",
+        "obj_weapon_REV_9",
+        "obj_weapon_LSP_21",
+        "obj_weapon_PXS_10",
+        "obj_weapon_REP_11",
+        "obj_weapon_A9_55",
+        "obj_weapon_DE_61",
+        "obj_weapon_HLP_64",
+        "obj_weapon_TEC_84",
+    ],
+}
 
 
 def cheat_rank(level: str) -> int:
@@ -65,15 +109,52 @@ def cheat_blurb(level: str) -> str:
 
 
 def slot_editable(slot: int, cheat_level: str, vanilla_editable: bool) -> bool:
-    """Whether the loadout card should let this slot be clicked."""
-    rank = cheat_rank(cheat_level)
-    if vanilla_editable:
-        return True
-    if slot in (0, 3):
-        return rank >= 2
-    if slot in (1, 2, 8):
-        return rank >= 3
-    return rank >= 3
+    """Every slot is clickable; cheat level is a picker filter, not a lock."""
+    return True
+
+
+def minimum_cheat_level(
+    object_id: str | None,
+    slot: int,
+    class_index: int,
+    class_equipped: list[str] | None = None,
+    subclass_index: int = 0,
+) -> str:
+    """Lowest cheat level at which this object is legal in this slot."""
+    if not object_id:
+        return "Vanilla"
+    for name, _ in CHEAT_LEVELS:
+        options = options_for_slot(
+            slot, class_index, name, class_equipped, subclass_index=subclass_index
+        )
+        if object_id in options:
+            return name
+    return "Unlimited"
+
+
+def loadout_cheat_level(
+    slots: list[str | None],
+    class_index: int,
+    class_equipped: list[str] | None = None,
+    subclass_index: int = 0,
+) -> str:
+    """Highest slot requirement — one non-Vanilla pick raises the whole loadout."""
+    rank = 0
+    name = "Vanilla"
+    for slot, object_id in enumerate(slots):
+        level = minimum_cheat_level(object_id, slot, class_index, class_equipped, subclass_index)
+        this_rank = cheat_rank(level)
+        if this_rank > rank:
+            rank = this_rank
+            name = level
+    return name
+
+
+def cheat_square_text(level: str) -> str:
+    """■ x rank, □ filling out to 4, then the rank number. Vanilla is 0."""
+    rank = cheat_rank(level)
+    squares = ("■" * rank) + ("□" * (CHEAT_SQUARE_COUNT - rank))
+    return f"{squares} {rank}"
 
 
 def _gamedata_dir() -> Path:
@@ -116,12 +197,21 @@ def labeled(object_id: str | None, multiline: bool = True) -> str:
     return f"{name}\n{object_id}" if multiline else f"{name}  ({object_id})"
 
 
+_NAME_SOURCES = (
+    ("perks.json", "perks"),
+    ("items.json", "items"),
+    ("weapons.json", "weapons"),
+    ("other_pool.json", "artefacts"),
+)
+
+
 def display_name(object_id: str | None) -> str:
+    """Player-facing in-game label when we have one, otherwise the object suffix."""
     if not object_id:
         return "(empty)"
     if object_id in CONFIRMED_NAMES:
         return CONFIRMED_NAMES[object_id]
-    for file_name, key in (("perks.json", "perks"), ("items.json", "items"), ("weapons.json", "weapons")):
+    for file_name, key in _NAME_SOURCES:
         for entry in _entries(file_name, key):
             if entry.get("id") == object_id:
                 guess = entry.get("name_guess")
@@ -134,7 +224,7 @@ def display_name(object_id: str | None) -> str:
 def class_group_of(object_id: str | None) -> str | None:
     if not object_id or object_id == RANDOM_MODULE_ID:
         return None
-    for file_name, key in (("perks.json", "perks"), ("items.json", "items"), ("weapons.json", "weapons")):
+    for file_name, key in _NAME_SOURCES:
         for entry in _entries(file_name, key):
             if entry.get("id") == object_id:
                 group = entry.get("class_group")
@@ -145,12 +235,19 @@ def class_group_of(object_id: str | None) -> str | None:
 
 
 def entry_search_text(object_id: str) -> str:
-    """All text the filter matches against for one object."""
-    parts = [object_id, display_name(object_id), class_group_of(object_id) or ""]
-    for file_name, key in (("perks.json", "perks"), ("items.json", "items"), ("weapons.json", "weapons")):
+    """All text the filter matches against for one object.
+
+    The in-game label is first so queries like "magic mag" hit the official name.
+    """
+    parts = [display_name(object_id), object_id, class_group_of(object_id) or ""]
+    for file_name, key in _NAME_SOURCES:
         for entry in _entries(file_name, key):
             if entry.get("id") != object_id:
                 continue
+            for field in ("name_guess", "subtitle", "description_guess"):
+                value = entry.get(field)
+                if isinstance(value, str):
+                    parts.append(value)
             for value in entry.values():
                 if isinstance(value, str):
                     parts.append(value)
@@ -245,6 +342,7 @@ def options_for_slot(
     class_index: int,
     restriction: str = DEFAULT_CHEAT_LEVEL,
     class_equipped: list[str] | None = None,
+    subclass_index: int = 0,
 ) -> list[str]:
     """Candidate object ids for one slot at a cheat level."""
     level = normalize_cheat_level(restriction)
@@ -257,19 +355,19 @@ def options_for_slot(
     elif rank >= 3:
         ids = pool_ids("weapons") + pool_ids("items") + pool_ids("perks")
     elif slot == 0:
-        ids = sorted(class_core_ids())
+        own_core = SUBCLASS_CORES.get((class_index, subclass_index))
         if rank < 2:
-            cores = _typed(equipped, "perks")
-            class_cores = [object_id for object_id in cores if object_id in class_core_ids()]
-            ids = class_cores or ids
+            ids = [own_core] if own_core else sorted(class_core_ids())
+        else:
+            ids = sorted(class_core_ids())
     elif kind == "weapons":
         if rank == 0:
-            ids = _typed(equipped, "weapons") or pool_ids("weapons")
+            ids = vanilla_pistols(class_index, equipped)
         else:
             ids = pool_ids("weapons")
     elif kind == "items":
         if rank == 0:
-            ids = _typed(equipped, "items") or pool_ids("items")
+            ids = list(VANILLA_ITEMS_BY_CLASS.get(class_index, []))
         else:
             ids = pool_ids("items")
     else:
@@ -282,6 +380,18 @@ def options_for_slot(
     if slot in (1, 2, 4, 5, 6, 7, 8):
         ids = [RANDOM_MODULE_ID] + ids
     return _unique_ids(ids)
+
+
+def vanilla_pistols(class_index: int, equipped: list[str] | None = None) -> list[str]:
+    """Starter pistols this class can pick in-game.
+
+    Specialist list is from the Engineer screenshot. Other groups are the
+    pistols seen on that class in the extracted save — still incomplete.
+    `equipped` is ignored so a cheated pistol cannot launder itself as Vanilla.
+    """
+    del equipped
+    pool = set(pool_ids("weapons"))
+    return [object_id for object_id in VANILLA_PISTOLS_BY_CLASS.get(class_index, []) if object_id in pool]
 
 
 def token_options(family: str) -> list[tuple[int, str]]:

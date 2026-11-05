@@ -284,25 +284,33 @@ def display_slot(value: str | None) -> str:
     return value
 
 
+def token_object_id(family: str, value: str | None) -> str | None:
+    """Object id a token index refers to, if the index matches an item or weapon."""
+    if value is None:
+        return None
+    try:
+        number = int(float(value))
+    except ValueError:
+        return None
+    import catalog
+
+    if family.startswith("i"):
+        return catalog.item_id_for_number(number)
+    if family.startswith("w"):
+        return catalog.weapon_id_for_number(number)
+    return None
+
+
 def display_token_value(family: str, value: str | None) -> str:
     """Token index plus a name when the index matches obj_itemN or obj_weapon_*_N."""
     if value is None:
         return "(none)"
     shown = savefile.format_display_value(value)
-    try:
-        number = int(float(value))
-    except ValueError:
+    object_id = token_object_id(family, value)
+    if not object_id:
         return shown
     import catalog
 
-    if family.startswith("i"):
-        object_id = catalog.item_id_for_number(number)
-    elif family.startswith("w"):
-        object_id = catalog.weapon_id_for_number(number)
-    else:
-        return shown
-    if not object_id:
-        return shown
     name = catalog.display_name(object_id)
     return f"{shown} {name}"
 
@@ -349,11 +357,25 @@ def print_comparison(current: dict, preset: dict) -> int:
     return changes
 
 
-def print_loadout(loadout: dict) -> None:
+def print_loadout(loadout: dict, class_index: int | None = None, subclass_index: int = 0) -> None:
     """Print one loadout with the raw save values, so they can be matched to in-game choices."""
+    import catalog
+
+    if class_index is not None:
+        level = catalog.loadout_cheat_level(
+            loadout["slots"], class_index, subclass_index=subclass_index
+        )
+        print(f"Legal in {level}  {catalog.cheat_square_text(level)}")
+        print()
     slot_width = max(len(f"Slot {slot}") for slot in range(SLOT_COUNT))
     for slot, value in enumerate(loadout["slots"]):
-        print(f"{f'Slot {slot}':{slot_width}} : {value if value is not None else '(not found)'}")
+        mark = ""
+        if class_index is not None:
+            slot_level = catalog.minimum_cheat_level(
+                value, slot, class_index, subclass_index=subclass_index
+            )
+            mark = f"  {catalog.cheat_square_text(slot_level)}"
+        print(f"{f'Slot {slot}':{slot_width}} : {value if value is not None else '(not found)'}{mark}")
 
     print()
     family_width = max(len(description) for _, description in TOKEN_FAMILIES.values())
@@ -531,7 +553,6 @@ def cheat_level_flow() -> None:
 def edit_slot_flow(save_path: Path) -> None:
     """Change one loadout slot from a filtered list at the current cheat level."""
     import catalog
-    import save_paths
 
     lines = savefile.read_lines(save_path)
     selection = select_subclass(lines)
@@ -540,7 +561,7 @@ def edit_slot_flow(save_path: Path) -> None:
     class_index, subclass_index = selection
     loadout = read_loadout(lines, class_index, subclass_index)
     print()
-    print_loadout(loadout)
+    print_loadout(loadout, class_index, subclass_index)
 
     slot_text = input("Slot number to edit (0-9): ").strip()
     try:
@@ -553,24 +574,48 @@ def edit_slot_flow(save_path: Path) -> None:
         return
 
     current = loadout["slots"][slot]
+    current_level = catalog.minimum_cheat_level(
+        current, slot, class_index, subclass_index=subclass_index
+    )
     print()
     print(f"Current slot {slot}: {catalog.labeled(current, multiline=False)}")
-    level = save_paths.load_cheat_level()
-    print(f"Cheat level: {level} — {catalog.cheat_blurb(level)}")
+    print(f"  {catalog.cheat_square_text(current_level)}  Legal in {current_level}")
+    print()
+    print(f"Cheat level for this pick (Enter = {current_level}, this slot's current level):")
+    for index, (name, blurb) in enumerate(catalog.CHEAT_LEVELS):
+        print(f"  {index}. {name} — {blurb}")
+    choice = input("Cheat level: ").strip()
+    if not choice:
+        level = current_level
+    elif choice.isdigit() and int(choice) in range(len(catalog.CHEAT_LEVELS)):
+        level = catalog.CHEAT_LEVELS[int(choice)][0]
+    else:
+        print(f"Unknown filter. Using {current_level}.")
+        level = current_level
+    print(f"Using {level}.")
     query = input("Filter (empty lists the first matches): ").strip()
     options = catalog.options_for_slot(
         slot,
         class_index,
         level,
-        catalog.equipped_on_class(lines, class_index),
+        subclass_index=subclass_index,
     )
     shown: list[str] = []
     for object_id in options:
         if query and not catalog.subsequence_match(query, catalog.entry_search_text(object_id)):
             continue
         shown.append(object_id)
-        if len(shown) >= SLOT_EDIT_MATCH_LIMIT:
-            break
+    shown.sort(
+        key=lambda object_id: (
+            object_id != current,
+            catalog.cheat_rank(
+                catalog.minimum_cheat_level(object_id, slot, class_index, subclass_index=subclass_index)
+            ),
+            catalog.display_name(object_id).lower(),
+        )
+    )
+    truncated = len(shown) > SLOT_EDIT_MATCH_LIMIT
+    shown = shown[:SLOT_EDIT_MATCH_LIMIT]
 
     if not shown:
         print("No matches. Nothing was changed.")
@@ -579,8 +624,13 @@ def edit_slot_flow(save_path: Path) -> None:
     print()
     for index, object_id in enumerate(shown, start=1):
         mark = "*" if object_id == current else " "
-        print(f"{index:2}. {mark} {catalog.labeled(object_id, multiline=False)}")
-    if len(shown) == SLOT_EDIT_MATCH_LIMIT:
+        needed = catalog.minimum_cheat_level(
+            object_id, slot, class_index, subclass_index=subclass_index
+        )
+        print(
+            f"{index:2}. {mark} {catalog.cheat_square_text(needed)}  {catalog.labeled(object_id, multiline=False)}"
+        )
+    if truncated:
         print(f"Showing first {SLOT_EDIT_MATCH_LIMIT} matches, keep typing to narrow down.")
     print(" 0. Cancel")
     print()
@@ -623,7 +673,7 @@ def view_save_loadout_flow(save_path: Path) -> None:
     for class_index, subclass_index in targets:
         print()
         print(f"--- {subclass_name(class_index, subclass_index)} (in save file) ---")
-        print_loadout(read_loadout(lines, class_index, subclass_index))
+        print_loadout(read_loadout(lines, class_index, subclass_index), class_index, subclass_index)
 
 
 def view_preset_flow() -> None:
@@ -640,7 +690,7 @@ def view_preset_flow() -> None:
     if preset.get("created"):
         print(f"Created: {preset['created']}")
     print()
-    print_loadout(preset)
+    print_loadout(preset, preset.get("class_index"), preset.get("subclass_index") or 0)
 
 
 def delete_preset_flow() -> None:
@@ -706,7 +756,6 @@ def run_loadout_menu(save_path: Path) -> None:
         "6": "6. Rename a preset",
         "7": "7. Delete a preset",
         "8": "8. Edit a single loadout slot",
-        "9": "9. Cheat level (how free loadout picks are)",
         "0": "0. Back to main menu",
     }
 
@@ -714,7 +763,7 @@ def run_loadout_menu(save_path: Path) -> None:
         print()
         print("=== Loadouts ===")
         print()
-        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"):
+        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "0"):
             print(options[key])
         print()
 
@@ -742,7 +791,5 @@ def run_loadout_menu(save_path: Path) -> None:
             delete_preset_flow()
         elif choice == "8":
             edit_slot_flow(save_path)
-        elif choice == "9":
-            cheat_level_flow()
         elif choice == "0":
             return

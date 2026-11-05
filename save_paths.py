@@ -77,6 +77,27 @@ def save_cheat_level(level: str) -> None:
     save_config({"cheat_level": catalog.normalize_cheat_level(level)})
 
 
+def load_window_geometry() -> dict | None:
+    """Last GUI size and position, if stored."""
+    data = load_config().get("window")
+    if not isinstance(data, dict):
+        return None
+    try:
+        width = int(data["width"])
+        height = int(data["height"])
+        x = int(data.get("x", 0))
+        y = int(data.get("y", 0))
+    except (TypeError, ValueError, KeyError):
+        return None
+    if width < 400 or height < 300:
+        return None
+    return {"width": width, "height": height, "x": x, "y": y}
+
+
+def save_window_geometry(width: int, height: int, x: int, y: int) -> None:
+    save_config({"window": {"width": int(width), "height": int(height), "x": int(x), "y": int(y)}})
+
+
 def local_appdata_dir() -> Path:
     """Best-effort Windows LocalAppData path for the current user."""
     local_appdata = os.environ.get("LOCALAPPDATA")

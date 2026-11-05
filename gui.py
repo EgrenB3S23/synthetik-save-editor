@@ -8,6 +8,7 @@ Game logic stays in loadouts.py / savefile.py / catalog.py / edits.py.
 
 from __future__ import annotations
 
+import math
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog
@@ -21,6 +22,8 @@ import variables
 
 FILTER_MATCH_LIMIT = 40
 FILE_POLL_MS = 2000
+PREFERRED_WINDOW = (980, 700)
+WINDOW_SCREEN_MARGIN = 80
 
 GROUP_COLORS = {
     "Guardian": "#3D6EA8",
@@ -34,6 +37,11 @@ FG = "#F4F6FA"
 MUTED = "#8A9BB5"
 PANEL = "#121A2B"
 NAV = "#243044"
+SLOT_NAME_FG = "#FFF4C2"
+SLOT_BORDER = "#111111"
+SLOT_BORDER_ACTIVE = "#FFF4C2"
+LOCK_RED = "#E23B3B"
+LOCKED_SLOTS = {0, 3}  # class memory module, class core item
 
 # (slot, label, vanilla_editable, can_empty)
 CARD_ROWS = [
@@ -53,6 +61,69 @@ EXTRA_CARD_ROWS = [
 ]
 
 CHEAT_LEVELS = [name for name, _ in catalog.CHEAT_LEVELS]
+
+
+def ensure_game_icons(root: tk.Misc) -> None:
+    """Crop icons from data.win once, if game_icons.py is present."""
+    try:
+        import game_icons
+
+        game_icons.ensure(root)
+    except Exception:
+        pass
+
+
+def attach_game_icon(parent, object_id: str | None, bg: str, size: int = 32):
+    """In-game art if game_icons.py is present. Safe no-op if that module is deleted."""
+    try:
+        import game_icons
+
+        return game_icons.attach(parent, object_id, bg, size)
+    except Exception:
+        return None
+
+
+def fit_window(root: tk.Tk, preferred: tuple[int, int] = PREFERRED_WINDOW, margin: int = WINDOW_SCREEN_MARGIN) -> None:
+    """Restore the last size the user chose, or pick a default that fits on this screen."""
+    saved = save_paths.load_window_geometry()
+    if saved:
+        width, height, x, y = saved["width"], saved["height"], saved["x"], saved["y"]
+    else:
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        max_w = max(640, screen_w - 2 * margin)
+        max_h = max(480, screen_h - 2 * margin)
+        pref_w, pref_h = preferred
+        width = min(pref_w, max_w)
+        height = min(pref_h, max_h)
+        x = max(0, (screen_w - width) // 2)
+        y = max(0, (screen_h - height) // 2)
+    root.geometry(f"{width}x{height}+{x}+{y}")
+    root.minsize(400, 300)
+
+
+def mix_hex(color: str, toward: str, amount: float) -> str:
+    """Blend two #RRGGBB colors. amount=1 is fully `toward`."""
+
+    def rgb(value: str) -> tuple[int, int, int]:
+        digits = value.lstrip("#")
+        return int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16)
+
+    start = rgb(color)
+    end = rgb(toward)
+    mixed = tuple(int(start[index] + (end[index] - start[index]) * amount) for index in range(3))
+    return "#{:02x}{:02x}{:02x}".format(*mixed)
+
+
+def bind_tree_click(widget, handler) -> None:
+    """Make a frame and every child clickable (Tk sends clicks to the leaf widget)."""
+    widget.bind("<Button-1>", lambda _event: handler(), add="+")
+    try:
+        widget.configure(cursor="hand2")
+    except tk.TclError:
+        pass
+    for child in widget.winfo_children():
+        bind_tree_click(child, handler)
 
 
 def make_frame(parent, **kwargs) -> tk.Frame:
@@ -108,6 +179,401 @@ def make_menu_button(parent, text: str, command) -> tk.Button:
     return button
 
 
+_shift_held = False
+_shift_listeners: list = []
+_shift_binds_installed = False
+TIP_BG = "#1A1A1A"
+
+
+def _install_shift_binds(widget) -> None:
+    global _shift_binds_installed
+    if _shift_binds_installed:
+        return
+    _shift_binds_installed = True
+    root = widget.winfo_toplevel()
+
+    def down(_event=None) -> None:
+        global _shift_held
+        _shift_held = True
+        for listener in list(_shift_listeners):
+            listener()
+
+    def up(_event=None) -> None:
+        global _shift_held
+        _shift_held = False
+        for listener in list(_shift_listeners):
+            listener()
+
+    for key in ("Shift_L", "Shift_R"):
+        root.bind_all(f"<KeyPress-{key}>", down, add="+")
+        root.bind_all(f"<KeyRelease-{key}>", up, add="+")
+
+
+def _place_tooltip(tip: tk.Toplevel, anchor) -> None:
+    """Put the tooltip above the anchor, lined up with its top-right corner."""
+    tip.update_idletasks()
+    x = anchor.winfo_rootx() + anchor.winfo_width() - tip.winfo_reqwidth()
+    y = anchor.winfo_rooty() - tip.winfo_reqheight() - 4
+    tip.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
+
+
+def _make_tooltip_window(widget) -> tk.Toplevel:
+    tip = tk.Toplevel(widget)
+    tip.wm_overrideredirect(True)
+    try:
+        tip.wm_attributes("-topmost", True)
+    except tk.TclError:
+        pass
+    tip.configure(bg=TIP_BG, highlightbackground="#888888", highlightthickness=1)
+    return tip
+
+
+def _pointer_over_any(event, widgets) -> bool:
+    try:
+        under = event.widget.winfo_containing(event.widget.winfo_pointerx(), event.widget.winfo_pointery())
+    except tk.TclError:
+        return False
+    current = under
+    while current is not None:
+        if current in widgets:
+            return True
+        current = getattr(current, "master", None)
+    return False
+
+
+def attach_tooltip(widget, text: str) -> None:
+    """Show `text` in a small popup while the pointer is over `widget`."""
+    state = {"tip": None, "after_id": None}
+
+    def cancel() -> None:
+        after_id = state["after_id"]
+        if after_id is not None and widget.winfo_exists():
+            widget.after_cancel(after_id)
+        state["after_id"] = None
+
+    def hide(_event=None) -> None:
+        cancel()
+        tip = state["tip"]
+        if tip is not None:
+            tip.destroy()
+            state["tip"] = None
+
+    def show() -> None:
+        if state["tip"] is not None or not widget.winfo_exists():
+            return
+        tip = _make_tooltip_window(widget)
+        make_label(
+            tip,
+            text,
+            bg=TIP_BG,
+            fg=FG,
+            font=("Segoe UI", 9),
+            padx=8,
+            pady=4,
+            wraplength=240,
+        ).pack()
+        _place_tooltip(tip, widget)
+        state["tip"] = tip
+
+    def schedule(_event=None) -> None:
+        cancel()
+        if widget.winfo_exists():
+            state["after_id"] = widget.after(350, show)
+
+    widget.bind("<Enter>", schedule, add="+")
+    widget.bind("<Leave>", hide, add="+")
+    widget.bind("<Destroy>", hide, add="+")
+    widget.bind("<Button-1>", hide, add="+")
+
+
+def attach_cheat_level_tooltip(widgets: list, rank: int, subject: str = "item") -> None:
+    """Squares/number hover: short rank line, Shift expands the cheat-level list."""
+    if not widgets:
+        return
+    anchor = widgets[0]
+    _install_shift_binds(anchor)
+    names = [name for name, _ in catalog.CHEAT_LEVELS]
+    rank = max(0, min(len(names) - 1, rank))
+    level_name = names[rank]
+    blurbs = {name: blurb for name, blurb in catalog.CHEAT_LEVELS}
+    own_line = f"{rank}  {level_name} — {blurbs[level_name]}"
+    if subject == "loadout":
+        summary = f"This loadout requires cheat level {rank} ({level_name})."
+        hint = "What are cheat levels? Hold Shift for an explanation."
+    elif subject == "choice":
+        summary = own_line
+        hint = "Hold Shift to see the other cheat levels."
+    else:
+        summary = f"This item in this slot requires cheat level {rank} ({level_name})."
+        hint = "What are cheat levels? Hold Shift for an explanation."
+    state = {"tip": None, "after_id": None, "leave_id": None, "expanded": False}
+
+    def cancel(key: str) -> None:
+        after_id = state[key]
+        if after_id is not None and anchor.winfo_exists():
+            anchor.after_cancel(after_id)
+        state[key] = None
+
+    def add_level_lines(body, expanded: bool) -> None:
+        for index, (name, blurb) in enumerate(catalog.CHEAT_LEVELS):
+            if not expanded and index != rank:
+                continue
+            current = index == rank
+            line = f"{index}  {name} — {blurb}"
+            make_label(
+                body,
+                line,
+                bg=TIP_BG,
+                fg=FG,
+                font=("Segoe UI", 9, "bold") if current else ("Segoe UI", 9),
+                wraplength=340,
+                justify="left",
+            ).pack(anchor="w", pady=1)
+
+    def fill(tip: tk.Toplevel, expanded: bool) -> None:
+        for child in tip.winfo_children():
+            child.destroy()
+        body = make_frame(tip, bg=TIP_BG, padx=8, pady=6)
+        body.pack()
+        if subject == "choice":
+            add_level_lines(body, expanded)
+            if not expanded:
+                make_label(body, hint, bg=TIP_BG, fg=MUTED, font=("Segoe UI", 8), wraplength=340).pack(
+                    anchor="w", pady=(6, 0)
+                )
+            return
+        make_label(body, summary, bg=TIP_BG, fg=FG, font=("Segoe UI", 9), wraplength=340).pack(anchor="w")
+        if not expanded:
+            make_label(body, hint, bg=TIP_BG, fg=MUTED, font=("Segoe UI", 8), wraplength=340).pack(
+                anchor="w", pady=(6, 0)
+            )
+            return
+        make_label(body, "Cheat levels", bg=TIP_BG, fg=FG, font=("Segoe UI", 9, "bold")).pack(
+            anchor="w", pady=(8, 4)
+        )
+        add_level_lines(body, expanded=True)
+
+    def place(tip: tk.Toplevel) -> None:
+        _place_tooltip(tip, anchor)
+
+    def hide(_event=None) -> None:
+        cancel("after_id")
+        cancel("leave_id")
+        try:
+            _shift_listeners.remove(on_shift)
+        except ValueError:
+            pass
+        tip = state["tip"]
+        if tip is not None:
+            tip.destroy()
+            state["tip"] = None
+        state["expanded"] = False
+
+    def show() -> None:
+        if not anchor.winfo_exists():
+            return
+        expanded = _shift_held
+        tip = state["tip"]
+        if tip is None:
+            tip = _make_tooltip_window(anchor)
+            state["tip"] = tip
+            if on_shift not in _shift_listeners:
+                _shift_listeners.append(on_shift)
+        fill(tip, expanded)
+        place(tip)
+        state["expanded"] = expanded
+
+    def on_shift() -> None:
+        if state["tip"] is None or not anchor.winfo_exists():
+            return
+        if state["expanded"] == _shift_held:
+            return
+        show()
+
+    def schedule(_event=None) -> None:
+        cancel("leave_id")
+        cancel("after_id")
+        if anchor.winfo_exists():
+            state["after_id"] = anchor.after(350, show)
+
+    def leave(event=None) -> None:
+        if event is not None and _pointer_over_any(event, widgets):
+            return
+        cancel("after_id")
+        cancel("leave_id")
+        if anchor.winfo_exists():
+            state["leave_id"] = anchor.after(80, hide)
+
+    for widget in widgets:
+        widget.bind("<Enter>", schedule, add="+")
+        widget.bind("<Leave>", leave, add="+")
+        widget.bind("<Destroy>", hide, add="+")
+        widget.bind("<Button-1>", hide, add="+")
+
+
+def make_padlock_icon(parent, bg: str, size: int = 12) -> tk.Canvas:
+    """Small red padlock, matching the in-game locked-slot mark."""
+    width = size
+    height = int(size * 1.3)
+    canvas = tk.Canvas(parent, width=width, height=height, bg=bg, highlightthickness=0, bd=0)
+    shackle_width = max(2, size // 6)
+    canvas.create_arc(
+        size * 0.2,
+        1,
+        size * 0.8,
+        size * 0.72,
+        start=0,
+        extent=180,
+        style="arc",
+        outline=LOCK_RED,
+        width=shackle_width,
+    )
+    canvas.create_rectangle(
+        size * 0.1,
+        size * 0.42,
+        size * 0.9,
+        height - 1,
+        outline=LOCK_RED,
+        fill=LOCK_RED,
+    )
+    return canvas
+
+
+def _ngon_points(cx: float, cy: float, radius: float, sides: int, rotation: float) -> list[float]:
+    points: list[float] = []
+    for index in range(sides):
+        angle = rotation + index * 2 * math.pi / sides
+        points.extend([cx + radius * math.cos(angle), cy + radius * math.sin(angle)])
+    return points
+
+
+def slot_heading_icon_kind(slot: int, object_id: str | None) -> str | None:
+    """Pistol, item gear, perk chest, or RANDOM MODULE dodecahedron. Cores have no icon."""
+    if slot in LOCKED_SLOTS:
+        return None
+    if object_id == catalog.RANDOM_MODULE_ID:
+        return "randomperk"
+    if slot == 9 or catalog.slot_kind(slot) == "weapons":
+        return "pistol"
+    if catalog.slot_kind(slot) == "items":
+        return "gear"
+    return "chest"
+
+
+def make_slot_kind_icon(parent, bg: str, kind: str, size: int = 16) -> tk.Canvas:
+    """Tiny slot-type mark: white pistol, grey dodecahedron (RANDOM MODULE), or gear."""
+    canvas = tk.Canvas(parent, width=size, height=size, bg=bg, highlightthickness=0, bd=0)
+    if kind == "pistol":
+        white = "#F4F6FA"
+        canvas.create_rectangle(1, size * 0.32, size * 0.58, size * 0.5, fill=white, outline=white)
+        canvas.create_rectangle(size * 0.28, size * 0.26, size * 0.9, size * 0.54, fill=white, outline=white)
+        canvas.create_polygon(
+            size * 0.52,
+            size * 0.52,
+            size * 0.86,
+            size * 0.52,
+            size * 0.94,
+            size * 0.94,
+            size * 0.6,
+            size * 0.94,
+            fill=white,
+            outline=white,
+        )
+        canvas.create_arc(
+            size * 0.46,
+            size * 0.48,
+            size * 0.74,
+            size * 0.82,
+            start=200,
+            extent=140,
+            style="arc",
+            outline=white,
+            width=1,
+        )
+    elif kind == "gear":
+        white = "#F4F6FA"
+        cx = cy = size / 2
+        outer = size * 0.46
+        inner = size * 0.3
+        hole = size * 0.14
+        points: list[float] = []
+        teeth = 8
+        for index in range(teeth * 2):
+            angle = -math.pi / 2 + index * math.pi / teeth
+            radius = outer if index % 2 == 0 else inner
+            points.extend([cx + radius * math.cos(angle), cy + radius * math.sin(angle)])
+        canvas.create_polygon(points, fill=white, outline=white)
+        canvas.create_oval(cx - hole, cy - hole, cx + hole, cy + hole, fill=bg, outline=bg)
+    elif kind == "chest":
+        red = "#C4452F"
+        dark = "#8B2E1F"
+        white = "#F4F6FA"
+        canvas.create_rectangle(2, size * 0.42, size - 2, size - 1, fill=red, outline=dark)
+        canvas.create_rectangle(1, size * 0.16, size - 1, size * 0.5, fill=red, outline=dark)
+        canvas.create_oval(size * 0.18, size * 0.24, size * 0.36, size * 0.42, fill=white, outline=white)
+        canvas.create_oval(size * 0.38, size * 0.24, size * 0.56, size * 0.42, fill=white, outline=white)
+        plus_x, plus_y = size * 0.74, size * 0.33
+        canvas.create_line(plus_x - 3, plus_y, plus_x + 3, plus_y, fill=white, width=2)
+        canvas.create_line(plus_x, plus_y - 3, plus_x, plus_y + 3, fill=white, width=2)
+        canvas.create_line(size * 0.58, size * 0.62, size * 0.82, size * 0.86, fill=white, width=1)
+        canvas.create_line(size * 0.82, size * 0.62, size * 0.58, size * 0.86, fill=white, width=1)
+    else:
+        cx = cy = size / 2
+        dark = "#7A808C"
+        light = "#C8CCD4"
+        canvas.create_polygon(
+            _ngon_points(cx, cy, size * 0.46, 5, -math.pi / 2),
+            fill=dark,
+            outline=dark,
+        )
+        canvas.create_polygon(
+            _ngon_points(cx, cy, size * 0.28, 5, -math.pi / 2 + math.pi / 5),
+            fill=light,
+            outline=light,
+        )
+    return canvas
+
+
+def make_cheat_squares(
+    parent,
+    rank: int,
+    bg: str,
+    size: int = 8,
+    plate: str | None = None,
+    tooltip_subject: str = "item",
+) -> tk.Frame:
+    """Row of 4 boxes; the first `rank` are small black squares (Vanilla = none filled)."""
+    gap = 3
+    pad = 3
+    rank = max(0, min(catalog.CHEAT_SQUARE_COUNT, rank))
+    canvas_bg = plate or bg
+    width = pad * 2 + catalog.CHEAT_SQUARE_COUNT * size + (catalog.CHEAT_SQUARE_COUNT - 1) * gap
+    height = size + pad * 2
+    row = make_frame(parent, bg=bg)
+    canvas = tk.Canvas(row, width=width, height=height, bg=canvas_bg, highlightthickness=0, bd=0)
+    canvas.pack(side="left")
+    for index in range(catalog.CHEAT_SQUARE_COUNT):
+        x0 = pad + index * (size + gap)
+        y0 = pad
+        x1 = x0 + size
+        y1 = y0 + size
+        if index < rank:
+            canvas.create_rectangle(x0, y0, x1, y1, fill="#111111", outline="#111111")
+        else:
+            canvas.create_rectangle(x0, y0, x1, y1, fill=canvas_bg, outline="#111111", width=1)
+    number_fg = "#111111" if plate else FG
+    number = make_label(
+        row,
+        str(rank),
+        bg=canvas_bg,
+        fg=number_fg,
+        font=("Segoe UI", 9, "bold"),
+    )
+    number.pack(side="left", padx=(4, 2))
+    attach_cheat_level_tooltip([row, canvas, number], rank, tooltip_subject)
+    return row
+
+
 def unique(ids: list[str]) -> list[str]:
     seen: set[str] = set()
     out = []
@@ -127,13 +593,10 @@ class EditorApp:
         self.root = tk.Tk()
         self.root.title("Synthetik Save Editor")
         self.root.configure(bg=BG)
-        self.root.minsize(980, 700)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._status = tk.StringVar(master=self.root, value=f"Save: {save_path}")
         self._path_text = tk.StringVar(master=self.root, value=str(save_path))
-        self.cheat_level = tk.StringVar(master=self.root, value=save_paths.load_cheat_level())
-        self.cheat_blurb = tk.StringVar(master=self.root, value=catalog.cheat_blurb(self.cheat_level.get()))
         self.views: dict[str, tk.Frame] = {}
         self.current_view = "menu"
         self._back_to = "menu"
@@ -147,6 +610,7 @@ class EditorApp:
         self.view_save_view: ViewSaveLoadoutsView | None = None
 
         self._build()
+        fit_window(self.root)
         self.root.after(FILE_POLL_MS, self._poll_file)
 
     def run(self) -> None:
@@ -193,27 +657,6 @@ class EditorApp:
             side="left", fill="x", expand=True
         )
         make_button(path_row, "Change…", self._change_save, bg=NAV, activebackground="#334866").pack(side="right")
-
-        cheat = make_frame(header)
-        cheat.pack(fill="x", pady=(8, 0))
-        make_label(cheat, "Cheat level", fg=MUTED).pack(side="left", padx=(0, 8))
-        for level in CHEAT_LEVELS:
-            tk.Radiobutton(
-                cheat,
-                text=level,
-                variable=self.cheat_level,
-                value=level,
-                command=self._on_cheat_level,
-                bg=BG,
-                fg=FG,
-                selectcolor=NAV,
-                activebackground=BG,
-                activeforeground=FG,
-                font=("Segoe UI", 9),
-            ).pack(side="left", padx=(0, 8))
-        make_label(header, "", textvariable=self.cheat_blurb, fg=MUTED, font=("Segoe UI", 9)).pack(
-            anchor="w", pady=(2, 0)
-        )
 
         nav = make_frame(self.root)
         nav.pack(fill="x", padx=12, pady=(0, 6))
@@ -268,6 +711,8 @@ class EditorApp:
         for name, frame in self.views.items():
             frame.pack_forget()
         self.views[key].pack(fill="both", expand=True)
+        if self.loadout_view:
+            self.loadout_view.bind_wheel(key == "loadout")
         if key == "menu":
             self.back_button.pack_forget()
             self.menu_view.refresh()
@@ -286,15 +731,6 @@ class EditorApp:
 
     def _back(self) -> None:
         self._show(self._back_to)
-
-    def _on_cheat_level(self) -> None:
-        level = catalog.normalize_cheat_level(self.cheat_level.get())
-        self.cheat_level.set(level)
-        self.cheat_blurb.set(catalog.cheat_blurb(level))
-        save_paths.save_cheat_level(level)
-        if self.loadout_view:
-            self.loadout_view.on_cheat_level()
-        self._status.set(f"Cheat level: {level}")
 
     def _change_save(self) -> None:
         if self.loadout_view and self.loadout_view.dirty:
@@ -337,6 +773,12 @@ class EditorApp:
         if self.loadout_view and self.loadout_view.dirty:
             if not messagebox.askyesno("Quit", "You have unsaved loadout changes. Quit anyway?"):
                 return
+        save_paths.save_window_geometry(
+            self.root.winfo_width(),
+            self.root.winfo_height(),
+            self.root.winfo_x(),
+            self.root.winfo_y(),
+        )
         self.root.destroy()
 
 
@@ -461,9 +903,17 @@ class ViewSaveLoadoutsView:
         for class_index, subclass_index in targets:
             loadout = loadouts.read_loadout(self.app.lines, class_index, subclass_index)
             name = loadouts.subclass_name(class_index, subclass_index)
-            lines = [f"--- {name} ---"]
+            level = catalog.loadout_cheat_level(
+                loadout["slots"], class_index, subclass_index=subclass_index
+            )
+            lines = [f"--- {name} ---", f"Legal in {level}  {catalog.cheat_square_text(level)}"]
             for slot, value in enumerate(loadout["slots"]):
-                lines.append(f"Slot {slot}: {catalog.labeled(value, multiline=False)}")
+                slot_level = catalog.minimum_cheat_level(
+                    value, slot, class_index, subclass_index=subclass_index
+                )
+                lines.append(
+                    f"Slot {slot}: {catalog.labeled(value, multiline=False)}  {catalog.cheat_square_text(slot_level)}"
+                )
             lines.append("")
             for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
                 lines.append(f"{description}: {loadouts.display_tokens(loadout['tokens'][family], family)}")
@@ -482,6 +932,9 @@ class LoadoutView:
         self.picking_token: tuple[str, int] | None = None
         self.picking_can_empty = False
         self.filter_var = tk.StringVar(master=app.root)
+        self.picker_cheat = tk.StringVar(master=app.root, value="Vanilla")
+        self._cheat_buttons: dict[str, tk.Button] = {}
+        ensure_game_icons(app.root)
         self._build()
         self._refresh_card()
 
@@ -517,13 +970,6 @@ class LoadoutView:
                 activebackground=color,
             ).pack(side="left", padx=(0, 6), pady=2)
 
-        make_label(
-            top,
-            "Cheat level is at the top of the window. Higher tiers unlock cores, other slot types, then non-starter gear.",
-            fg=MUTED,
-            font=("Segoe UI", 9),
-        ).pack(anchor="w", pady=(0, 6))
-
         body = make_frame(self.frame)
         body.pack(fill="both", expand=True)
         body.columnconfigure(1, weight=1)
@@ -531,31 +977,58 @@ class LoadoutView:
 
         self.card = make_frame(body, padx=2, pady=2)
         self.card.grid(row=0, column=0, sticky="ns")
-        self.card_inner = make_frame(self.card)
-        self.card_inner.pack(fill="both", expand=True)
+        self.card.rowconfigure(0, weight=1)
+        self.card.columnconfigure(0, weight=1)
+        self.card_canvas = tk.Canvas(self.card, highlightthickness=0, bg=BG, width=280)
+        card_scroll = tk.Scrollbar(self.card, orient="vertical", command=self.card_canvas.yview)
+        self.card_canvas.configure(yscrollcommand=card_scroll.set)
+        self.card_canvas.grid(row=0, column=0, sticky="nsew")
+        card_scroll.grid(row=0, column=1, sticky="ns")
+        self.card_inner = make_frame(self.card_canvas)
+        self.card_window = self.card_canvas.create_window((0, 0), window=self.card_inner, anchor="nw")
+        self.card_inner.bind("<Configure>", lambda _: self._sync_card_scroll())
 
         picker = make_frame(body)
         picker.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
-        picker.rowconfigure(3, weight=1)
         picker.columnconfigure(0, weight=1)
 
-        make_label(picker, "Click a slot, then pick a value", fg=MUTED).grid(row=0, column=0, sticky="w")
+        make_label(picker, "Click a slot, then pick a value. Vanilla first; raise the cheat level only if you need more.", fg=MUTED).grid(row=0, column=0, sticky="w")
         self.picker_title = make_label(picker, "No slot selected", font=("Segoe UI", 12, "bold"))
-        self.picker_title.grid(row=1, column=0, sticky="w", pady=(4, 6))
+        self.picker_title.grid(row=1, column=0, sticky="w", pady=(4, 4))
+
+        cheat_row = make_frame(picker)
+        cheat_row.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        make_label(cheat_row, "Cheat level", fg=MUTED).pack(side="left", padx=(0, 8))
+        for index, (name, _) in enumerate(catalog.CHEAT_LEVELS):
+            button = make_button(
+                cheat_row,
+                f"{index}  {name}",
+                lambda name=name: self._set_picker_cheat(name),
+                bg=NAV,
+                activebackground="#334866",
+                font=("Segoe UI", 9),
+                padx=8,
+                pady=4,
+            )
+            button.pack(side="left", padx=(0, 4))
+            self._cheat_buttons[name] = button
+            attach_cheat_level_tooltip([button], index, subject="choice")
+        self._highlight_cheat_buttons()
 
         filter_row = make_frame(picker)
-        filter_row.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        filter_row.grid(row=3, column=0, sticky="ew", pady=(0, 6))
         filter_row.columnconfigure(1, weight=1)
         make_label(filter_row, "Filter").grid(row=0, column=0, padx=(0, 8))
         self.filter_entry = make_entry(filter_row, textvariable=self.filter_var)
         self.filter_entry.grid(row=0, column=1, sticky="ew")
         self.filter_var.trace_add("write", lambda *_: self._fill_picker())
 
+        picker.rowconfigure(4, weight=1)
         self.picker_canvas = tk.Canvas(picker, bg=PANEL, highlightthickness=0)
         scroll = tk.Scrollbar(picker, command=self.picker_canvas.yview)
         self.picker_canvas.configure(yscrollcommand=scroll.set)
-        self.picker_canvas.grid(row=3, column=0, sticky="nsew")
-        scroll.grid(row=3, column=1, sticky="ns")
+        self.picker_canvas.grid(row=4, column=0, sticky="nsew")
+        scroll.grid(row=4, column=1, sticky="ns")
         self.picker_list = make_frame(self.picker_canvas, bg=PANEL)
         self.picker_window = self.picker_canvas.create_window((0, 0), window=self.picker_list, anchor="nw")
         self.picker_list.bind(
@@ -566,8 +1039,6 @@ class LoadoutView:
             "<Configure>",
             lambda event: self.picker_canvas.itemconfigure(self.picker_window, width=event.width),
         )
-        self.picker_canvas.bind("<Enter>", lambda _: self._bind_wheel(True))
-        self.picker_canvas.bind("<Leave>", lambda _: self._bind_wheel(False))
 
         actions = make_frame(self.frame)
         actions.pack(fill="x", pady=(8, 0))
@@ -583,27 +1054,70 @@ class LoadoutView:
         self.token_panel = make_frame(self.frame)
         self.token_panel.pack(fill="x")
 
-    def on_cheat_level(self) -> None:
-        self._refresh_card()
+    def _set_picker_cheat(self, name: str) -> None:
+        self.picker_cheat.set(catalog.normalize_cheat_level(name))
+        self._highlight_cheat_buttons()
         self._fill_picker()
 
-    def _cheat(self) -> str:
-        return catalog.normalize_cheat_level(self.app.cheat_level.get())
+    def _highlight_cheat_buttons(self) -> None:
+        current = self.picker_cheat.get()
+        for name, button in self._cheat_buttons.items():
+            if name == current:
+                button.configure(bg="#2E6B4F", activebackground="#3D8B65")
+            else:
+                button.configure(bg=NAV, activebackground="#334866")
+
+    def _equipped(self) -> list[str]:
+        return catalog.equipped_on_class(self.app.lines, self.class_index)
+
+    def _slot_level(self, slot: int, object_id: str | None) -> str:
+        return catalog.minimum_cheat_level(
+            object_id, slot, self.class_index, self._equipped(), self.subclass_index
+        )
+
+    def _loadout_level(self) -> str:
+        return catalog.loadout_cheat_level(
+            self.loadout["slots"], self.class_index, self._equipped(), self.subclass_index
+        )
 
     def _card_rows(self) -> list[tuple[int, str, bool, bool]]:
-        rows = list(CARD_ROWS)
-        if catalog.cheat_rank(self._cheat()) >= 3:
-            rows.extend(EXTRA_CARD_ROWS)
-        return rows
+        return list(CARD_ROWS) + list(EXTRA_CARD_ROWS)
 
-    def _bind_wheel(self, on: bool) -> None:
+    def bind_wheel(self, on: bool) -> None:
         if on:
             self.app.root.bind_all("<MouseWheel>", self._on_wheel)
         else:
             self.app.root.unbind_all("<MouseWheel>")
 
     def _on_wheel(self, event) -> None:
-        self.picker_canvas.yview_scroll(int(-event.delta / 120), "units")
+        try:
+            under = self.app.root.winfo_containing(
+                self.app.root.winfo_pointerx(), self.app.root.winfo_pointery()
+            )
+        except tk.TclError:
+            return
+        target = None
+        widget = under
+        while widget is not None:
+            if widget in (self.card_canvas, self.card_inner, self.card):
+                target = self.card_canvas
+                break
+            if widget in (self.picker_canvas, self.picker_list):
+                target = self.picker_canvas
+                break
+            widget = getattr(widget, "master", None)
+        if target is None:
+            return
+        target.yview_scroll(int(-event.delta / 120), "units")
+
+    def _sync_card_scroll(self) -> None:
+        bbox = self.card_canvas.bbox("all")
+        if bbox:
+            self.card_canvas.configure(scrollregion=bbox)
+        inner_w = self.card_inner.winfo_reqwidth()
+        if inner_w > 1:
+            self.card_canvas.itemconfigure(self.card_window, width=inner_w)
+            self.card_canvas.configure(width=inner_w)
 
     def _select_class(self, class_index: int, subclass_index: int) -> None:
         if (class_index, subclass_index) == (self.class_index, self.subclass_index):
@@ -619,7 +1133,9 @@ class LoadoutView:
         self.picking_slot = None
         self.picking_token = None
         self.filter_var.set("")
+        self.picker_cheat.set("Vanilla")
         self._refresh_card()
+        self.card_canvas.yview_moveto(0)
         self._fill_picker()
         self.app._status.set(f"Viewing {loadouts.subclass_name(class_index, subclass_index)}")
 
@@ -632,33 +1148,80 @@ class LoadoutView:
         header.pack(fill="x")
         make_label(header, name.upper(), bg=accent, font=("Segoe UI", 14, "bold")).pack(anchor="w")
         make_label(header, self._group(), bg=accent, font=("Segoe UI", 9)).pack(anchor="w")
+        loadout_level = self._loadout_level()
+        legal = make_frame(header, bg=accent)
+        legal.pack(anchor="w", pady=(6, 0))
+        make_cheat_squares(
+            legal, catalog.cheat_rank(loadout_level), accent, tooltip_subject="loadout"
+        ).pack(side="left")
+        make_label(
+            legal,
+            f"  Legal in {loadout_level}",
+            bg=accent,
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left")
         make_label(self.card_inner, "LOADOUT", bg=accent, font=("Segoe UI", 9, "bold"), padx=12).pack(
             fill="x", pady=(8, 4)
         )
 
         slots = self.loadout["slots"]
-        for slot, label, vanilla_edit, can_empty in self._card_rows():
-            can_edit = catalog.slot_editable(slot, self._cheat(), vanilla_edit)
+        for slot, label, _vanilla_edit, can_empty in self._card_rows():
             value = slots[slot]
-            row = make_frame(self.card_inner, bg=accent, padx=12, pady=6)
-            row.pack(fill="x")
-            extra = "  +25%" if slot == 6 else ""
-            text = f"{label}\n{catalog.labeled(value)}{extra}"
-            if can_edit:
-                make_button(
-                    row,
-                    text,
-                    lambda slot=slot, can_empty=can_empty: self._start_pick(slot, can_empty),
-                    bg=accent,
-                    activebackground=accent,
-                    justify="left",
-                    anchor="w",
-                    font=("Segoe UI", 10),
-                ).pack(fill="x")
-            else:
-                make_label(row, text, bg=accent, justify="left").pack(anchor="w")
+            slot_level = self._slot_level(slot, value)
+            locked = slot in LOCKED_SLOTS
+            inner = mix_hex(accent, "#000000", 0.5 if locked else 0.28)
+            active = self.picking_slot == slot
+            box = tk.Frame(
+                self.card_inner,
+                bg=inner,
+                highlightbackground=SLOT_BORDER_ACTIVE if active else SLOT_BORDER,
+                highlightthickness=2 if active else 1,
+                padx=10,
+                pady=8,
+                cursor="hand2",
+            )
+            box.pack(fill="x", padx=10, pady=(0, 6))
+            title = "Slot: " + label + ("  +25%" if slot == 6 else "")
+            heading = make_frame(box, bg=inner)
+            heading.pack(fill="x")
+            icon_kind = slot_heading_icon_kind(slot, value)
+            if icon_kind:
+                make_slot_kind_icon(heading, inner, icon_kind).pack(side="left", padx=(0, 6))
+            make_label(heading, title, bg=inner, fg="#E4E9F2", font=("Segoe UI", 8)).pack(side="left")
+            padlock = None
+            if locked:
+                padlock = make_padlock_icon(heading, inner, size=12)
+                padlock.pack(side="right")
+            content_name = catalog.display_name(value)
+            content = make_frame(box, bg=inner)
+            content.pack(anchor="w", pady=(2, 0))
+            art = attach_game_icon(content, value, inner)
+            if art is not None:
+                art.pack(side="left", padx=(0, 8))
+            names = make_frame(content, bg=inner)
+            names.pack(side="left")
+            make_label(
+                names,
+                content_name,
+                bg=inner,
+                fg=SLOT_NAME_FG,
+                font=("Segoe UI", 13, "bold"),
+            ).pack(anchor="w")
+            if value and content_name != value:
+                make_label(names, value, bg=inner, fg="#C5D0E0", font=("Segoe UI", 8)).pack(anchor="w")
+            marks = make_frame(box, bg=inner)
+            marks.pack(anchor="w", pady=(6, 0))
+            make_cheat_squares(marks, catalog.cheat_rank(slot_level), inner, size=7).pack(side="left")
+            bind_tree_click(
+                box,
+                lambda slot=slot, can_empty=can_empty: self._start_pick(slot, can_empty),
+            )
+            if padlock is not None:
+                attach_tooltip(padlock, "This slot is normally not changeable ingame.")
         self.card.configure(bg=accent)
         self.card_inner.configure(bg=accent)
+        self.card_canvas.configure(bg=accent)
+        self._sync_card_scroll()
         self._refresh_tokens()
 
     def _refresh_tokens(self) -> None:
@@ -670,23 +1233,42 @@ class LoadoutView:
             make_label(row, description, fg=MUTED, width=22).pack(side="left")
             values = self.loadout["tokens"][family]
             for index in range(loadouts.TOKENS_PER_FAMILY):
-                text = loadouts.display_token_value(family, values[index])
+                value = values[index]
+                text = loadouts.display_token_value(family, value)
+                object_id = loadouts.token_object_id(family, value)
+                active = self.picking_token == (family, index)
+                cell = make_frame(row, bg=NAV)
+                if active:
+                    cell.configure(highlightbackground=SLOT_BORDER_ACTIVE, highlightthickness=1)
+                cell.pack(side="left", padx=2)
+                art = attach_game_icon(cell, object_id, NAV)
+                if art is not None:
+                    art.pack(side="left", padx=(4, 0), pady=2)
+                    art.configure(cursor="hand2")
+                    art.bind(
+                        "<Button-1>",
+                        lambda _event, family=family, index=index: self._start_token_pick(family, index),
+                    )
                 make_button(
-                    row,
+                    cell,
                     text,
                     lambda family=family, index=index: self._start_token_pick(family, index),
                     bg=NAV,
                     activebackground="#334866",
                     font=("Segoe UI", 8),
-                ).pack(side="left", padx=2)
+                ).pack(side="left")
 
     def _start_pick(self, slot: int, can_empty: bool) -> None:
         self.picking_slot = slot
         self.picking_token = None
         self.picking_can_empty = can_empty
         self.filter_var.set("")
+        current_level = self._slot_level(slot, self.loadout["slots"][slot])
+        self.picker_cheat.set(current_level)
         row = next(r for r in self._card_rows() if r[0] == slot)
         self.picker_title.configure(text=row[1])
+        self._refresh_card()
+        self._highlight_cheat_buttons()
         self._fill_picker()
         self.filter_entry.focus_set()
 
@@ -694,8 +1276,11 @@ class LoadoutView:
         self.picking_slot = None
         self.picking_token = (family, index)
         self.filter_var.set("")
+        self.picker_cheat.set("Vanilla")
         description = loadouts.TOKEN_FAMILIES[family][1]
         self.picker_title.configure(text=f"{description}  ({index + 1}/4)")
+        self._refresh_card()
+        self._highlight_cheat_buttons()
         self._fill_picker()
         self.filter_entry.focus_set()
 
@@ -703,8 +1288,9 @@ class LoadoutView:
         ids = catalog.options_for_slot(
             slot,
             self.class_index,
-            self._cheat(),
-            catalog.equipped_on_class(self.app.lines, self.class_index),
+            self.picker_cheat.get(),
+            self._equipped(),
+            subclass_index=self.subclass_index,
         )
         if can_empty and catalog.RANDOM_MODULE_ID not in ids:
             ids = [catalog.RANDOM_MODULE_ID] + ids
@@ -725,6 +1311,13 @@ class LoadoutView:
         query = self.filter_var.get()
         options = self._options_for_slot(self.picking_slot, self.picking_can_empty)
         current = self.loadout["slots"][self.picking_slot]
+        options.sort(
+            key=lambda object_id: (
+                object_id != current,
+                catalog.cheat_rank(self._slot_level(self.picking_slot, object_id)),
+                catalog.display_name(object_id).lower(),
+            )
+        )
         shown = 0
         truncated = False
         for object_id in options:
@@ -737,15 +1330,24 @@ class LoadoutView:
             group = catalog.class_group_of(object_id)
             color = GROUP_COLORS.get(group or "", "#2A3548")
             mark = "▸ " if object_id == current else "  "
+            needed = self._slot_level(self.picking_slot, object_id)
+            row = make_frame(self.picker_list, bg=color)
+            row.pack(fill="x", padx=4, pady=2)
+            make_cheat_squares(row, catalog.cheat_rank(needed), color, size=10, plate="#EDEFF3").pack(
+                side="left", padx=(6, 8), pady=6
+            )
+            art = attach_game_icon(row, object_id, color)
+            if art is not None:
+                art.pack(side="left", padx=(0, 6), pady=4)
             make_button(
-                self.picker_list,
+                row,
                 mark + catalog.labeled(object_id, multiline=False),
                 lambda object_id=object_id: self._choose(object_id),
                 bg=color,
                 activebackground=color,
                 anchor="w",
                 justify="left",
-            ).pack(fill="x", padx=4, pady=2)
+            ).pack(side="left", fill="x", expand=True)
 
         self._picker_footer(shown, truncated)
 
@@ -784,15 +1386,20 @@ class LoadoutView:
             group = catalog.class_group_of(object_id)
             color = GROUP_COLORS.get(group or "", "#2A3548")
             mark = "▸ " if number == current_number else "  "
+            row = make_frame(self.picker_list, bg=color)
+            row.pack(fill="x", padx=4, pady=2)
+            art = attach_game_icon(row, object_id, color)
+            if art is not None:
+                art.pack(side="left", padx=(6, 6), pady=4)
             make_button(
-                self.picker_list,
+                row,
                 f"{mark}{number}  {catalog.labeled(object_id, multiline=False)}",
                 lambda number=number: self._choose_token(str(number)),
                 bg=color,
                 activebackground=color,
                 anchor="w",
                 justify="left",
-            ).pack(fill="x", padx=4, pady=2)
+            ).pack(side="left", fill="x", expand=True)
 
         self._picker_footer(shown, truncated)
 
@@ -859,6 +1466,7 @@ class PerksView:
         self.app = app
         self.frame = make_frame(parent)
         self.value_var = tk.StringVar(master=app.root, value=variables.PERK_DAILY_MODULE_BOOST_VALUE)
+        ensure_game_icons(app.root)
         self._build()
 
     def _build(self) -> None:
@@ -944,15 +1552,20 @@ class PerksView:
                     pending = savefile.format_display_value(self.pending_roll[perk_id])
                     shown = f"{shown}  →  {pending}"
                 object_id = f"obj_perk_{perk_id}"
+                row = make_frame(self.list_frame, bg="#2A3548")
+                row.pack(fill="x", padx=8, pady=1)
+                art = attach_game_icon(row, object_id, "#2A3548")
+                if art is not None:
+                    art.pack(side="left", padx=(6, 6), pady=2)
                 make_button(
-                    self.list_frame,
+                    row,
                     f"{catalog.labeled(object_id, multiline=False)}  =  {shown}",
                     lambda perk_id=perk_id: self._set_one(perk_id),
                     bg="#2A3548",
                     activebackground="#3A4558",
                     anchor="w",
                     justify="left",
-                ).pack(fill="x", padx=8, pady=1)
+                ).pack(side="left", fill="x", expand=True)
 
     def _parse_value(self) -> str | None:
         text = self.value_var.get().strip() or variables.PERK_DAILY_MODULE_BOOST_VALUE
@@ -1114,9 +1727,22 @@ class PresetsView:
         if preset is None:
             self.detail.insert("end", problem or "invalid")
             return
-        lines = [f"{preset['subclass']}: {preset['name']}", f"File: {path.name}", ""]
+        level = catalog.loadout_cheat_level(
+            preset["slots"], preset["class_index"], subclass_index=preset["subclass_index"]
+        )
+        lines = [
+            f"{preset['subclass']}: {preset['name']}",
+            f"File: {path.name}",
+            f"Legal in {level}  {catalog.cheat_square_text(level)}",
+            "",
+        ]
         for slot, value in enumerate(preset["slots"]):
-            lines.append(f"Slot {slot}: {catalog.labeled(value, multiline=False)}")
+            slot_level = catalog.minimum_cheat_level(
+                value, slot, preset["class_index"], subclass_index=preset["subclass_index"]
+            )
+            lines.append(
+                f"Slot {slot}: {catalog.labeled(value, multiline=False)}  {catalog.cheat_square_text(slot_level)}"
+            )
         lines.append("")
         for family, (_, description) in loadouts.TOKEN_FAMILIES.items():
             lines.append(f"{description}: {loadouts.display_tokens(preset['tokens'][family], family)}")
@@ -1234,7 +1860,10 @@ class BackupsView:
             return
         safety = savefile.restore_backup(self.app.save_path, backup_path)
         self.app.reload_from_disk(quiet=True)
-        self.app._status.set(f"Restored {backup_path.name}. Previous save copied to {safety.name}.")
+        if safety is None:
+            self.app._status.set(f"Restored {backup_path.name}. There was no live save to keep.")
+        else:
+            self.app._status.set(f"Restored {backup_path.name}. Previous save copied to {safety.name}.")
         self.refresh()
 
 

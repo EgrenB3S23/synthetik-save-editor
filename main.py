@@ -28,7 +28,6 @@ def resolve_user_path(user_input: str) -> Path | None:
 
     if path.is_file():
         if path.name != DEFAULT_SAVE_NAME:
-            # print(f"Note: This file is not named {DEFAULT_SAVE_NAME}. Proceeding anyway.")
             print(f"WARNING: This tool expects a file named \"{DEFAULT_SAVE_NAME}\". This path points to a file named \"{path.name}\". Proceed anyways?.")
             choice = input("Enter Y or N: ").strip()
             if choice == "Y":
@@ -177,7 +176,10 @@ def restore_backup_flow(save_path: Path) -> None:
         return
 
     safety_copy = savefile.restore_backup(save_path, backup_path)
-    print(f"Restored {backup_path.name}. Previous save copied to {safety_copy.name}.")
+    if safety_copy is None:
+        print(f"Restored {backup_path.name}. There was no live save to keep.")
+    else:
+        print(f"Restored {backup_path.name}. Previous save copied to {safety_copy.name}.")
 
 
 def get_data_current_value(save_path: Path) -> str | None:
