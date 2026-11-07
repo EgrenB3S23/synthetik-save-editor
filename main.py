@@ -98,6 +98,22 @@ def ask_perk_boost_value() -> str | None:
     return user_input
 
 
+def reset_daily_run(save_path: Path) -> None:
+    """Set drun to 1. Starting a run clears it to 0, so no other value is useful."""
+    current = savefile.get_variable_value(savefile.read_lines(save_path), variables.DAILY_RUN_VARIABLE)
+    shown = savefile.format_display_value(current) if current is not None else "missing"
+    print(f"Current daily run ticket (drun): {shown}")
+    if current is not None:
+        try:
+            already_available = float(current) == float(variables.DAILY_RUN_AVAILABLE)
+        except ValueError:
+            already_available = False
+        if already_available:
+            print("Already 1. Nothing was changed.")
+            return
+    edits.apply_edit(save_path, edits.set_daily_run)
+
+
 def ask_data_value() -> str | None:
     """Ask for a data (currency) value. Empty input uses 1000."""
     user_input = input("Enter data value (leave empty for 1000): ").strip()
@@ -188,6 +204,12 @@ def get_data_current_value(save_path: Path) -> str | None:
     return savefile.get_variable_value(lines, variables.DATA_VARIABLE)
 
 
+def _daily_run_option(save_path: Path) -> str:
+    raw = savefile.get_variable_value(savefile.read_lines(save_path), variables.DAILY_RUN_VARIABLE)
+    shown = savefile.format_display_value(raw) if raw is not None else "missing"
+    return f"10. Daily run: Reset ticket to 1 (current: {shown})"
+
+
 def build_menu_options(save_path: Path) -> dict[str, str]:
     """Build the text for each menu option."""
     default_perk_value = savefile.format_display_value(variables.PERK_DAILY_MODULE_BOOST_VALUE)
@@ -209,6 +231,7 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
         "7": "7. Loadouts: View loadouts, save or load presets",
         "8": "8. Loadouts: Open graphical editor",
         "9": "9. Restore a backup of this save",
+        "10": _daily_run_option(save_path),
         "0": "0. Exit",
     }
 
@@ -221,7 +244,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"):
+    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "0"):
         print(options[key])
     print()
 
@@ -285,6 +308,8 @@ def run_menu(save_path: Path) -> Path | None:
             gui.open_loadout_editor(save_path)
         elif choice == "9":
             restore_backup_flow(save_path)
+        elif choice == "10":
+            reset_daily_run(save_path)
         elif choice == "0":
             return None
 

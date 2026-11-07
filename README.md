@@ -43,6 +43,7 @@ python main.py
 - **Change daily module bonuses** to any number (all 62, one perk, or a random roll from `count:value` pairs).
 - **View current perk boosts**.
 - **Set data** (the `currency` resource) to a chosen value.
+- **Daily run ticket** (`drun`): reset it to 1 so the once-a-day run is available again. Starting a run sets it to 0. The game normally writes 1 about 12 hours after the last login.
 - **Loadout presets**: save one subclass's slots + tokens to a file in `loadouts/`, load it back, rename, delete.
 - **Graphical editor** (`py main.py --gui`): clickable menu matching the CLI. The loadout card is one option; perk boosts, data, presets, backups, and viewing save loadouts are the others. The first time you open a loadout it can crop item/perk/weapon icons from your installed Synthetik `data.win` and cache them in `game_icons/` (not in git). To drop that feature later: delete `game_icons.py`, the `game_icons/` folder, and the few `game_icons` lines in `gui.py`.
 - **Cheat levels** on each slot pick (Vanilla first, then widen that pick). The loadout is legal at the highest level any slot needs. Black squares on the card show that level. The game may still reset illegal loadouts.

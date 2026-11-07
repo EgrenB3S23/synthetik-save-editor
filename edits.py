@@ -237,6 +237,18 @@ def set_data_to_1000(lines: list[str]) -> tuple[list[str], str]:
     return set_data(lines, "1000")
 
 
+def set_daily_run(lines: list[str]) -> tuple[list[str], str]:
+    """Set the daily-run ticket (`drun`) to 1 so the run is available again."""
+    updated_lines, found = savefile.set_variable(
+        lines, variables.DAILY_RUN_VARIABLE, variables.DAILY_RUN_AVAILABLE
+    )
+    if found:
+        summary = f"Set daily run ticket ({variables.DAILY_RUN_VARIABLE}) to 1."
+    else:
+        summary = f"Variable '{variables.DAILY_RUN_VARIABLE}' was not found in the save file."
+    return updated_lines, summary
+
+
 def set_data(lines: list[str], value: str) -> tuple[list[str], str]:
     """Set the data resource (currency) to a chosen value."""
     updated_lines, found = savefile.set_variable(lines, variables.DATA_VARIABLE, value)

@@ -605,6 +605,7 @@ class EditorApp:
         self.loadout_view: LoadoutView | None = None
         self.perks_view: PerksView | None = None
         self.data_view: DataView | None = None
+        self.daily_view: DailyRunView | None = None
         self.presets_view: PresetsView | None = None
         self.backups_view: BackupsView | None = None
         self.view_save_view: ViewSaveLoadoutsView | None = None
@@ -631,6 +632,8 @@ class EditorApp:
             self.perks_view.refresh()
         if self.data_view:
             self.data_view.refresh()
+        if self.daily_view:
+            self.daily_view.refresh()
         if self.presets_view:
             self.presets_view.refresh()
         if self.backups_view:
@@ -672,6 +675,7 @@ class EditorApp:
         self.loadout_view = LoadoutView(self.body, self)
         self.perks_view = PerksView(self.body, self)
         self.data_view = DataView(self.body, self)
+        self.daily_view = DailyRunView(self.body, self)
         self.presets_view = PresetsView(self.body, self)
         self.backups_view = BackupsView(self.body, self)
         self.view_save_view = ViewSaveLoadoutsView(self.body, self)
@@ -681,6 +685,7 @@ class EditorApp:
             "loadout": self.loadout_view.frame,
             "perks": self.perks_view.frame,
             "data": self.data_view.frame,
+            "daily": self.daily_view.frame,
             "presets": self.presets_view.frame,
             "backups": self.backups_view.frame,
             "view_save": self.view_save_view.frame,
@@ -722,6 +727,8 @@ class EditorApp:
             self.perks_view.refresh()
         elif key == "data":
             self.data_view.refresh()
+        elif key == "daily":
+            self.daily_view.refresh()
         elif key == "presets":
             self.presets_view.refresh()
         elif key == "backups":
@@ -806,13 +813,14 @@ class MenuView:
             "3": lambda: self.app._show("perks"),
             "4": lambda: self.app._show("perks"),
             "5": lambda: self.app._show("data"),
+            "10": lambda: self.app._show("daily"),
             "6": self.app._change_save,
             "7": lambda: self.app._show("loadouts"),
             "8": lambda: self.app._show("loadout"),
             "9": lambda: self.app._show("backups"),
             "0": self.app._on_close,
         }
-        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"):
+        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "0"):
             self.buttons[key] = make_menu_button(self.frame, "", actions[key])
         self.refresh()
 
@@ -822,6 +830,13 @@ class MenuView:
             data_option = f"5. Data: Set to a chosen value (current: {savefile.format_display_value(raw)})"
         else:
             data_option = "5. Data: Set to a chosen value (current: unknown)"
+        raw_ticket = savefile.get_variable_value(self.app.lines, variables.DAILY_RUN_VARIABLE)
+        if raw_ticket is not None:
+            daily_option = (
+                f"10. Daily run: Reset ticket to 1 (current: {savefile.format_display_value(raw_ticket)})"
+            )
+        else:
+            daily_option = "10. Daily run: Reset ticket to 1 (current: missing)"
         labels = {
             "1": "1. Perks: Set all class perks' daily boost to chosen value",
             "2": "2. Perks: Set single class perk's daily boost to chosen value",
@@ -832,6 +847,7 @@ class MenuView:
             "7": "7. Loadouts: View loadouts, save or load presets",
             "8": "8. Loadouts: Open graphical editor",
             "9": "9. Restore a backup of this save",
+            "10": daily_option,
             "0": "0. Exit",
         }
         for key, button in self.buttons.items():
@@ -1671,6 +1687,50 @@ class DataView:
             return
 
         self.app.apply_and_refresh(lambda lines: edits.set_data(lines, text), f"Set data to {text}.")
+
+
+class DailyRunView:
+    def __init__(self, parent: tk.Frame, app: EditorApp) -> None:
+        self.app = app
+        self.frame = make_frame(parent)
+        make_label(self.frame, "Daily run ticket (save variable: drun)", font=("Segoe UI", 12, "bold")).pack(
+            anchor="w"
+        )
+        make_label(
+            self.frame,
+            "0 means the run was already used. 1 makes it available again. "
+            "Starting a run sets this to 0. The game writes 1 on its own about 12 hours after the last login.",
+            fg=MUTED,
+            wraplength=720,
+            justify="left",
+        ).pack(anchor="w", pady=(6, 0))
+        self.current = make_label(self.frame, "", fg=MUTED)
+        self.current.pack(anchor="w", pady=8)
+        make_button(
+            self.frame,
+            "Reset to 1",
+            self._reset,
+            bg="#2E6B4F",
+            activebackground="#3D8B65",
+        ).pack(anchor="w")
+
+    def refresh(self) -> None:
+        raw = savefile.get_variable_value(self.app.lines, variables.DAILY_RUN_VARIABLE)
+        shown = savefile.format_display_value(raw) if raw is not None else "missing"
+        self.current.configure(text=f"Current: {shown}")
+
+    def _reset(self) -> None:
+        raw = savefile.get_variable_value(self.app.lines, variables.DAILY_RUN_VARIABLE)
+        try:
+            already_available = raw is not None and float(raw) == float(variables.DAILY_RUN_AVAILABLE)
+        except ValueError:
+            already_available = False
+        if already_available:
+            messagebox.showinfo("Daily run", "The daily run ticket is already 1.")
+            return
+        if not messagebox.askyesno("Daily run", "Set the daily run ticket (drun) to 1?"):
+            return
+        self.app.apply_and_refresh(edits.set_daily_run, "Set daily run ticket to 1.")
 
 
 class PresetsView:

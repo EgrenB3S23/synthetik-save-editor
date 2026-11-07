@@ -8,6 +8,11 @@ Each normal perk daily module boost uses:
 # Save file variable name: currency
 DATA_VARIABLE = "currency"
 
+# Daily run ticket. 0 = already used, 1 = available again.
+# Starting a run sets this to 0. The game writes 1 about 12 hours after the last login.
+DAILY_RUN_VARIABLE = "drun"
+DAILY_RUN_AVAILABLE = "1"
+
 # Shared prefix for the 62 normal class perks.
 PERK_VARIABLE_PREFIX = "tpoints_obj_perk_"
 

@@ -85,6 +85,10 @@ or a different flag.
 ## Other
 
 - `currency` = data (confirmed)
+- `drun` = daily run ticket. `0` means already used, `1` means available.
+  Starting a run sets it to `0` even if it was higher (tested: `2` became `0`).
+  The game writes `1` on its own about 12 hours after the last login.
+  Menu option 10 always writes `1`.
 - `skilltokens`, `labskillpoints`, `arenatokens`: global counters (observed)
 - `resunlock0`–`resunlock13`: 0/1 flags. On this save only `resunlock0` was 0. Candidate for
   research/DLC unlocks — do not mass-flip without an in-game test.
