@@ -441,14 +441,16 @@ PERK_ALIASES = {
     "headshotammo": "HEAD HUNTER",
     "ejectsurge": "SWITCH POSITION",
     "dodgeboost": "EVASIVE MANEUVERS",
-    "dance": "SPOTTER",
+    "dance": "SHADOW DANCE",
     "longrange": "KEEPING DISTANCE",
     "specialized": "DMR CONVERSION",
     "powertuning": "KEEPING COOL",
+    "standstill": "KEEPING COOL",
+    "recovery": "RECOVERY",
     "healthy": "AGAINST THE ODDS",
     "stealback": "BLOOD BORNE",
     "pistolextender": "WEAPONS DEAL",
-    "classweapon": "CLASS WEAPON",
+    "classweapon": "WEAPON DROP",
     "reloadstack": "ROUTINE",
     "powerstep": "CHARGE",
     "fieldration": "FIELD RATIONS",
@@ -456,12 +458,16 @@ PERK_ALIASES = {
     "wepupgrade": "PACK A PUNCH",
     "holdbreath": "HOLD BREATH",
     "combo": "MADNESS",
-    "drill": "DEXTERITY",
+    "drill": "DRILL",
+    "drone1": "DRONE MOD",
     "hframe": "CHROMATIC ALLOY",
     "selfrepair": "INNER FIRE",
-    "itemcdvariant": "OVERDRIVE",
+    "heatup": "FORGED BY FIRE",
+    "ammoregen": "MULTIPLY",
+    "itemcdvariant": "WELL OILED",
+    "heatrecharge": "OVERDRIVE",
     "heatcontrol": "CALCULATED",
-    "force": "UNSTOPPABLE FORCE",
+    "force": "FORCE UNLEASHED",
     "sunrise": "SUN RISING",
     "dodgeheat": "UNCEASING",
 }
@@ -547,9 +553,23 @@ def assign_perk_catalog(
                 if object_id not in used_ids:
                     apply(object_id, label)
 
+    # These labels were confirmed in-game and must replace an earlier wrong match.
+    force_alias = {
+        "heatup",
+        "ammoregen",
+        "itemcdvariant",
+        "heatrecharge",
+        "force",
+        "classweapon",
+        "drill",
+        "drone1",
+        "dance",
+        "standstill",
+        "recovery",
+    }
     for suffix, label in PERK_ALIASES.items():
         object_id = f"obj_perk_{suffix}"
-        if object_id in perk_ids and object_id not in used_ids:
+        if object_id in perk_ids and (object_id not in used_ids or suffix in force_alias):
             apply(object_id, label)
 
     remaining_catalog = [entry for entry in catalog if entry["name"] not in used_names]

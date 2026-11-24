@@ -21,6 +21,35 @@ CONFIRMED_NAMES = {
     "obj_item107_ministim": "Magic Mag",
     "obj_weapon_REP_11": "57 Fusion Classic",
     "obj_perk_dodgeheat": "Unceasing",
+    "obj_perk_heatup": "Forged by Fire",
+    "obj_perk_ammoregen": "Multiply",
+    "obj_perk_itemcdvariant": "Well Oiled",
+    "obj_perk_heatrecharge": "Overdrive",
+    "obj_perk_force": "Force Unleashed",
+    "obj_perk_classweapon": "Weapon Drop",
+    "obj_perk_drill": "Drill",
+    "obj_perk_drone1": "Drone Mod",
+    "obj_perk_dance": "Shadow Dance",
+    "obj_perk_standstill": "Keeping Cool",
+    "obj_perk_recovery": "Recovery",
+    "obj_weapon_PTL_6": "P33 Compact",
+    "obj_weapon_REV_9": "Last Breath",
+    "obj_weapon_A9_55": "A9 Infinite",
+    "obj_weapon_TEC_84": "TEC-9",
+    "obj_weapon_DE_94": "Titanium Eagle",
+    "obj_weapon_SUP_67": "P25 Overdrive",
+    "obj_weapon_CP_38": "XM2 Coil Pistol",
+    "obj_weapon_MC_62": "Master Chief",
+    "obj_weapon_G17_63": "G17 'Undercover'",
+    "obj_weapon_DE_61": "Desert Eagle .50",
+    "obj_weapon_LSP_21": "Kaida Laser Pistol",
+    "obj_weapon_HLP_64": "PPQ-H Laser Pistol",
+    "obj_weapon_PXS_10": "PXS Covert Ops",
+    "obj_item122_targetcpu": "Targeting Laser",
+    "obj_item130_riotguard": "Guardian",
+    "obj_item94_dagger": "Scoundrel's Dagger",
+    "obj_item80_masterkey": "Dragon's Masterkey",
+    "obj_item12_reflector": "RV Rebuke System",
 }
 
 CLASS_GROUP_BY_INDEX = {
@@ -39,7 +68,7 @@ CHEAT_LEVELS: list[tuple[str, str]] = [
     ("Unlimited", "Any item, weapon, perk, or artefact in the game data, any slot."),
 ]
 DEFAULT_CHEAT_LEVEL = "Vanilla"
-CHEAT_SQUARE_COUNT = 4  # black squares = rank; Vanilla is 0 filled squares
+CHEAT_SQUARE_COUNT = 4  # filled white squares = rank; Vanilla is 0 filled squares
 _SKIP_IDS = {"obj_perk_parent", "obj_item_parent", "obj_weapon_parent"}
 
 SUBCLASS_CORES = {
@@ -53,35 +82,76 @@ SUBCLASS_CORES = {
     (4, 1): "obj_perk_demolisher",
 }
 
-# Starter items seen on each class group. Incomplete vs the full in-game picker.
-VANILLA_ITEMS_BY_CLASS = {
-    1: ["obj_item99_battlecry", "obj_item36_grenade_stun", "obj_item100_breachingcharge"],
-    2: ["obj_item122_targetcpu", "obj_item83_grenade_smoke", "obj_item115_decoy", "obj_item94_dagger"],
-    3: ["obj_item81_tanto", "obj_item55_stim", "obj_item86_commandoflare", "obj_item124_gunner"],
-    4: [
-        "obj_item71_sentry",
-        "obj_item130_riotguard",
-        "obj_item126_missiledrone",
-        "obj_item6_reloader",
-        "obj_item101_resonator",
-    ],
+# Pistols every class can start with, then the two that belong to one superclass.
+# Names follow the in-game pistol list (all-class, plus two exclusives).
+UNIVERSAL_PISTOLS = [
+    "obj_weapon_PTL_6",  # P33 Compact
+    "obj_weapon_REP_11",  # 57 Fusion Classic
+    "obj_weapon_REV_9",  # Last Breath
+    "obj_weapon_A9_55",  # A9 Infinite
+    "obj_weapon_TEC_84",  # TEC-9
+    "obj_weapon_DE_94",  # Titanium Eagle
+    "obj_weapon_SUP_67",  # P25 Overdrive
+]
+CLASS_PISTOLS = {
+    1: ["obj_weapon_CP_38", "obj_weapon_MC_62"],  # XM2 Coil, Master Chief
+    2: ["obj_weapon_PXS_10", "obj_weapon_G17_63"],  # PXS Covert Ops, G17 Undercover
+    3: ["obj_weapon_HON_34", "obj_weapon_DE_61"],  # Kaida Model H, Desert Eagle .50
+    4: ["obj_weapon_LSP_21", "obj_weapon_HLP_64"],  # Kaida Laser, PPQ-H Laser
 }
 
-VANILLA_PISTOLS_BY_CLASS = {
-    1: ["obj_weapon_CP_38"],
-    2: ["obj_weapon_DE_94", "obj_weapon_REP_11"],
-    3: ["obj_weapon_HON_34", "obj_weapon_REP_11"],
-    4: [
-        "obj_weapon_PTL_6",
-        "obj_weapon_REV_9",
-        "obj_weapon_LSP_21",
-        "obj_weapon_PXS_10",
-        "obj_weapon_REP_11",
-        "obj_weapon_A9_55",
-        "obj_weapon_DE_61",
-        "obj_weapon_HLP_64",
-        "obj_weapon_TEC_84",
+# Starting items a player can put in an item slot. Subclass cores are separate:
+# the class choice grants them, and they are not a slot pick.
+UNIVERSAL_ITEMS = [
+    "obj_item54_c4",  # Composite 4
+    "obj_item130_riotguard",  # Guardian
+    "obj_item132_dynamite",  # Neutrino Bomb
+    "obj_item98_minisentry",  # 'Seth-up' Suitcase Sentry
+]
+CLASS_ITEMS = {
+    1: [
+        "obj_item69_taser",
+        "obj_item30_methadone",
+        "obj_item12_reflector",
+        "obj_item36_grenade_stun",
+        "obj_item33_shieldburst",
+        "obj_item121_tomahawk",
     ],
+    2: [
+        "obj_item63_cellreplacer",
+        "obj_item115_decoy",
+        "obj_item82_flare",
+        "obj_item79_bolt",
+        "obj_item97_minelaser",
+        "obj_item83_grenade_smoke",
+        "obj_item35_grenade_flash",
+    ],
+    3: [
+        "obj_item123_cover",
+        "obj_item8_injection",
+        "obj_item37_grenade_plasma",
+        "obj_item86_commandoflare",
+        "obj_item109_reloader2",
+        "obj_item55_stim",
+    ],
+    4: [
+        "obj_item38_grenade_toxic",
+        "obj_item80_masterkey",
+        "obj_item6_reloader",
+        "obj_item126_missiledrone",
+        "obj_item110_spider",
+        "obj_item18_potion",
+    ],
+}
+SUBCLASS_CORE_ITEMS = {
+    (1, 0): "obj_item99_battlecry",
+    (1, 1): "obj_item100_breachingcharge",
+    (2, 0): "obj_item122_targetcpu",
+    (2, 1): "obj_item94_dagger",
+    (3, 0): "obj_item81_tanto",
+    (3, 1): "obj_item124_gunner",
+    (4, 0): "obj_item71_sentry",
+    (4, 1): "obj_item101_resonator",
 }
 
 
@@ -360,6 +430,9 @@ def options_for_slot(
             ids = [own_core] if own_core else sorted(class_core_ids())
         else:
             ids = sorted(class_core_ids())
+    elif slot == 3 and rank < 2:
+        core = SUBCLASS_CORE_ITEMS.get((class_index, subclass_index))
+        ids = [core] if core else []
     elif kind == "weapons":
         if rank == 0:
             ids = vanilla_pistols(class_index, equipped)
@@ -367,7 +440,7 @@ def options_for_slot(
             ids = pool_ids("weapons")
     elif kind == "items":
         if rank == 0:
-            ids = list(VANILLA_ITEMS_BY_CLASS.get(class_index, []))
+            ids = vanilla_items(class_index)
         else:
             ids = pool_ids("items")
     else:
@@ -382,16 +455,26 @@ def options_for_slot(
     return _unique_ids(ids)
 
 
-def vanilla_pistols(class_index: int, equipped: list[str] | None = None) -> list[str]:
-    """Starter pistols this class can pick in-game.
+def _in_pool(ids: list[str], kind: str) -> list[str]:
+    pool = set(pool_ids(kind))
+    return [object_id for object_id in ids if object_id in pool]
 
-    Specialist list is from the Engineer screenshot. Other groups are the
-    pistols seen on that class in the extracted save — still incomplete.
+
+def vanilla_pistols(class_index: int, equipped: list[str] | None = None) -> list[str]:
+    """All-class starter pistols, plus this superclass's two exclusives.
+
     `equipped` is ignored so a cheated pistol cannot launder itself as Vanilla.
     """
     del equipped
-    pool = set(pool_ids("weapons"))
-    return [object_id for object_id in VANILLA_PISTOLS_BY_CLASS.get(class_index, []) if object_id in pool]
+    return _in_pool(UNIVERSAL_PISTOLS + CLASS_PISTOLS.get(class_index, []), "weapons")
+
+
+def vanilla_items(class_index: int) -> list[str]:
+    """All-class starter items, plus this superclass's choosable items.
+
+    Subclass core items are not included. Choosing the subclass grants those.
+    """
+    return _in_pool(UNIVERSAL_ITEMS + CLASS_ITEMS.get(class_index, []), "items")
 
 
 def token_options(family: str) -> list[tuple[int, str]]:

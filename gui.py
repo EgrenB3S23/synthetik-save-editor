@@ -53,12 +53,9 @@ CARD_ROWS = [
     (6, "Class perk 1 (Overdrive slot)", True, True),
     (7, "Class perk 2", True, True),
 ]
-# Save slots that are not on the vanilla class card. Shown at Omnislots+.
-EXTRA_CARD_ROWS = [
-    (1, "Extra slot 1", False, True),
-    (2, "Extra slot 2", False, True),
-    (8, "Extra slot 8", False, True),
-]
+# Save variables perkslot1, perkslot2, and perkslot8 exist, but no in-game card row
+# has been matched to them. Leave them out of the card so they are not edited.
+# (There is no "Extra slot 3". The third unmapped index is 8.)
 
 CHEAT_LEVELS = [name for name, _ in catalog.CHEAT_LEVELS]
 
@@ -539,18 +536,17 @@ def make_cheat_squares(
     rank: int,
     bg: str,
     size: int = 8,
-    plate: str | None = None,
     tooltip_subject: str = "item",
 ) -> tk.Frame:
-    """Row of 4 boxes; the first `rank` are small black squares (Vanilla = none filled)."""
+    """Row of 4 boxes; the first `rank` are filled white (Vanilla = none filled)."""
     gap = 3
     pad = 3
+    mark = "#FFFFFF"
     rank = max(0, min(catalog.CHEAT_SQUARE_COUNT, rank))
-    canvas_bg = plate or bg
     width = pad * 2 + catalog.CHEAT_SQUARE_COUNT * size + (catalog.CHEAT_SQUARE_COUNT - 1) * gap
     height = size + pad * 2
     row = make_frame(parent, bg=bg)
-    canvas = tk.Canvas(row, width=width, height=height, bg=canvas_bg, highlightthickness=0, bd=0)
+    canvas = tk.Canvas(row, width=width, height=height, bg=bg, highlightthickness=0, bd=0)
     canvas.pack(side="left")
     for index in range(catalog.CHEAT_SQUARE_COUNT):
         x0 = pad + index * (size + gap)
@@ -558,20 +554,88 @@ def make_cheat_squares(
         x1 = x0 + size
         y1 = y0 + size
         if index < rank:
-            canvas.create_rectangle(x0, y0, x1, y1, fill="#111111", outline="#111111")
+            canvas.create_rectangle(x0, y0, x1, y1, fill=mark, outline=mark)
         else:
-            canvas.create_rectangle(x0, y0, x1, y1, fill=canvas_bg, outline="#111111", width=1)
-    number_fg = "#111111" if plate else FG
+            canvas.create_rectangle(x0, y0, x1, y1, fill=bg, outline=mark, width=1)
     number = make_label(
         row,
         str(rank),
-        bg=canvas_bg,
-        fg=number_fg,
+        bg=bg,
+        fg=mark,
         font=("Segoe UI", 9, "bold"),
     )
     number.pack(side="left", padx=(4, 2))
     attach_cheat_level_tooltip([row, canvas, number], rank, tooltip_subject)
     return row
+
+
+def wheel_axis(event: tk.Event) -> str:
+    """Which way one wheel notch scrolls. This is the usual desktop convention.
+
+    The wheel is vertical. Sideways is Shift+wheel, or a horizontal wheel.
+    Tk already reports that second wheel as Shift+MouseWheel, so both gestures
+    land here. Change this function if that convention changes.
+    """
+    if event.state & 0x0001:
+        return "x"
+    return "y"
+
+
+def mark_wheel_scroll(target: tk.Misc, *covers: tk.Misc) -> None:
+    """The pointer over this widget, or over one of its scrollbars, scrolls it."""
+    for widget in (target, *covers):
+        widget._wheel_target = target  # type: ignore[attr-defined]
+
+
+def add_axis_scrollbars(widget: tk.Misc, *, horizontal: bool = False, vertical: bool = True) -> None:
+    """Grid scrollbars next to a widget already gridded at row 0, column 0."""
+    parent = widget.nametowidget(widget.winfo_parent())
+    covers: list[tk.Misc] = []
+    if vertical:
+        bar = tk.Scrollbar(parent, orient="vertical", command=widget.yview)
+        widget.configure(yscrollcommand=bar.set)
+        bar.grid(row=0, column=1, sticky="ns")
+        covers.append(bar)
+    if horizontal:
+        bar = tk.Scrollbar(parent, orient="horizontal", command=widget.xview)
+        widget.configure(xscrollcommand=bar.set)
+        bar.grid(row=1, column=0, sticky="ew")
+        covers.append(bar)
+    mark_wheel_scroll(widget, *covers)
+
+
+def install_pointer_wheel(root: tk.Misc) -> None:
+    """Scroll the list under the pointer. Tk otherwise scrolls the focused control."""
+    if getattr(root, "_pointer_wheel", False):
+        return
+    root._pointer_wheel = True  # type: ignore[attr-defined]
+    root.bind_class("Listbox", "<MouseWheel>", lambda _event: None)
+    root.bind_class("Text", "<MouseWheel>", lambda _event: None)
+    root.bind_all("<MouseWheel>", _pointer_wheel, add="+")
+
+
+def _pointer_wheel(event: tk.Event) -> str | None:
+    try:
+        under = event.widget.winfo_containing(event.widget.winfo_pointerx(), event.widget.winfo_pointery())
+    except tk.TclError:
+        return None
+    target = None
+    widget = under
+    while widget is not None:
+        target = getattr(widget, "_wheel_target", None)
+        if target is not None:
+            break
+        widget = getattr(widget, "master", None)
+    if target is None:
+        return None
+    steps = int(-event.delta / 120)
+    if steps == 0:
+        steps = -1 if event.delta > 0 else 1
+    if wheel_axis(event) == "x":
+        target.xview_scroll(steps, "units")
+    else:
+        target.yview_scroll(steps, "units")
+    return "break"
 
 
 def unique(ids: list[str]) -> list[str]:
@@ -594,6 +658,7 @@ class EditorApp:
         self.root.title("Synthetik Save Editor")
         self.root.configure(bg=BG)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        install_pointer_wheel(self.root)
 
         self._status = tk.StringVar(master=self.root, value=f"Save: {save_path}")
         self._path_text = tk.StringVar(master=self.root, value=str(save_path))
@@ -698,6 +763,12 @@ class EditorApp:
             bottom, "Reload from save", self._reload_clicked, bg="#3A4A66", activebackground="#4A5A76"
         ).pack(side="left")
         make_label(bottom, "", textvariable=self._status, fg=MUTED).pack(side="left", padx=12)
+        make_label(
+            bottom,
+            "Tested on Synthetik 1 patch 27. Also works on patch 26.",
+            fg=MUTED,
+            font=("Segoe UI", 8),
+        ).pack(side="right")
 
         make_label(
             self.root,
@@ -716,8 +787,6 @@ class EditorApp:
         for name, frame in self.views.items():
             frame.pack_forget()
         self.views[key].pack(fill="both", expand=True)
-        if self.loadout_view:
-            self.loadout_view.bind_wheel(key == "loadout")
         if key == "menu":
             self.back_button.pack_forget()
             self.menu_view.refresh()
@@ -814,13 +883,14 @@ class MenuView:
             "4": lambda: self.app._show("perks"),
             "5": lambda: self.app._show("data"),
             "10": lambda: self.app._show("daily"),
+            "11": self._start_game,
             "6": self.app._change_save,
             "7": lambda: self.app._show("loadouts"),
             "8": lambda: self.app._show("loadout"),
             "9": lambda: self.app._show("backups"),
             "0": self.app._on_close,
         }
-        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "0"):
+        for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "0"):
             self.buttons[key] = make_menu_button(self.frame, "", actions[key])
         self.refresh()
 
@@ -848,10 +918,14 @@ class MenuView:
             "8": "8. Loadouts: Open graphical editor",
             "9": "9. Restore a backup of this save",
             "10": daily_option,
+            "11": "11. Start Synthetik",
             "0": "0. Exit",
         }
         for key, button in self.buttons.items():
             button.configure(text=labels[key])
+
+    def _start_game(self) -> None:
+        self.app._status.set(save_paths.start_synthetik())
 
 
 class LoadoutMenuView:
@@ -901,8 +975,13 @@ class ViewSaveLoadoutsView:
                 activebackground=color,
             ).pack(side="left", padx=(0, 4), pady=2)
 
-        self.detail = tk.Text(self.frame, bg=PANEL, fg=FG, font=("Consolas", 9), wrap="none")
-        self.detail.pack(fill="both", expand=True)
+        detail_wrap = make_frame(self.frame)
+        detail_wrap.pack(fill="both", expand=True)
+        detail_wrap.columnconfigure(0, weight=1)
+        detail_wrap.rowconfigure(0, weight=1)
+        self.detail = tk.Text(detail_wrap, bg=PANEL, fg=FG, font=("Consolas", 9), wrap="none")
+        self.detail.grid(row=0, column=0, sticky="nsew")
+        add_axis_scrollbars(self.detail, horizontal=True, vertical=True)
 
     def refresh(self) -> None:
         self._show_all()
@@ -949,7 +1028,7 @@ class LoadoutView:
         self.picking_can_empty = False
         self.filter_var = tk.StringVar(master=app.root)
         self.picker_cheat = tk.StringVar(master=app.root, value="Vanilla")
-        self._cheat_buttons: dict[str, tk.Button] = {}
+        self._cheat_buttons: dict[str, tk.Frame] = {}
         ensure_game_icons(app.root)
         self._build()
         self._refresh_card()
@@ -1000,6 +1079,7 @@ class LoadoutView:
         self.card_canvas.configure(yscrollcommand=card_scroll.set)
         self.card_canvas.grid(row=0, column=0, sticky="nsew")
         card_scroll.grid(row=0, column=1, sticky="ns")
+        mark_wheel_scroll(self.card_canvas, card_scroll)
         self.card_inner = make_frame(self.card_canvas)
         self.card_window = self.card_canvas.create_window((0, 0), window=self.card_inner, anchor="nw")
         self.card_inner.bind("<Configure>", lambda _: self._sync_card_scroll())
@@ -1015,20 +1095,12 @@ class LoadoutView:
         cheat_row = make_frame(picker)
         cheat_row.grid(row=2, column=0, sticky="ew", pady=(0, 6))
         make_label(cheat_row, "Cheat level", fg=MUTED).pack(side="left", padx=(0, 8))
-        for index, (name, _) in enumerate(catalog.CHEAT_LEVELS):
-            button = make_button(
-                cheat_row,
-                f"{index}  {name}",
-                lambda name=name: self._set_picker_cheat(name),
-                bg=NAV,
-                activebackground="#334866",
-                font=("Segoe UI", 9),
-                padx=8,
-                pady=4,
-            )
-            button.pack(side="left", padx=(0, 4))
-            self._cheat_buttons[name] = button
-            attach_cheat_level_tooltip([button], index, subject="choice")
+        for name, _ in catalog.CHEAT_LEVELS:
+            shell = make_frame(cheat_row, bg=NAV, padx=8, pady=4, cursor="hand2")
+            shell.pack(side="left", padx=(0, 4), anchor="n")
+            shell.bind("<Button-1>", lambda _event, name=name: self._set_picker_cheat(name))
+            self._cheat_buttons[name] = shell
+            attach_cheat_level_tooltip([shell], catalog.cheat_rank(name), subject="choice")
         self._highlight_cheat_buttons()
 
         filter_row = make_frame(picker)
@@ -1045,6 +1117,7 @@ class LoadoutView:
         self.picker_canvas.configure(yscrollcommand=scroll.set)
         self.picker_canvas.grid(row=4, column=0, sticky="nsew")
         scroll.grid(row=4, column=1, sticky="ns")
+        mark_wheel_scroll(self.picker_canvas, scroll)
         self.picker_list = make_frame(self.picker_canvas, bg=PANEL)
         self.picker_window = self.picker_canvas.create_window((0, 0), window=self.picker_list, anchor="nw")
         self.picker_list.bind(
@@ -1075,13 +1148,41 @@ class LoadoutView:
         self._highlight_cheat_buttons()
         self._fill_picker()
 
+    def _bind_cheat_button(self, widget: tk.Misc, name: str) -> None:
+        for child in widget.winfo_children():
+            child.bind("<Button-1>", lambda _event, name=name: self._set_picker_cheat(name), add="+")
+            try:
+                child.configure(cursor="hand2")
+            except tk.TclError:
+                pass
+            self._bind_cheat_button(child, name)
+
+    def _paint_cheat_button(self, name: str) -> None:
+        selected = name == self.picker_cheat.get()
+        bg = "#2E6B4F" if selected else NAV
+        shell = self._cheat_buttons[name]
+        for child in shell.winfo_children():
+            child.destroy()
+        shell.configure(bg=bg)
+        rank = catalog.cheat_rank(name)
+        squares = make_cheat_squares(shell, rank, bg, tooltip_subject="choice")
+        squares.pack(anchor="center")
+        label = make_label(
+            shell,
+            name,
+            bg=bg,
+            fg=FG,
+            font=("Segoe UI", 9),
+            anchor="center",
+            justify="center",
+        )
+        label.pack(anchor="center")
+        attach_cheat_level_tooltip([label], rank, subject="choice")
+        self._bind_cheat_button(shell, name)
+
     def _highlight_cheat_buttons(self) -> None:
-        current = self.picker_cheat.get()
-        for name, button in self._cheat_buttons.items():
-            if name == current:
-                button.configure(bg="#2E6B4F", activebackground="#3D8B65")
-            else:
-                button.configure(bg=NAV, activebackground="#334866")
+        for name in self._cheat_buttons:
+            self._paint_cheat_button(name)
 
     def _equipped(self) -> list[str]:
         return catalog.equipped_on_class(self.app.lines, self.class_index)
@@ -1097,34 +1198,7 @@ class LoadoutView:
         )
 
     def _card_rows(self) -> list[tuple[int, str, bool, bool]]:
-        return list(CARD_ROWS) + list(EXTRA_CARD_ROWS)
-
-    def bind_wheel(self, on: bool) -> None:
-        if on:
-            self.app.root.bind_all("<MouseWheel>", self._on_wheel)
-        else:
-            self.app.root.unbind_all("<MouseWheel>")
-
-    def _on_wheel(self, event) -> None:
-        try:
-            under = self.app.root.winfo_containing(
-                self.app.root.winfo_pointerx(), self.app.root.winfo_pointery()
-            )
-        except tk.TclError:
-            return
-        target = None
-        widget = under
-        while widget is not None:
-            if widget in (self.card_canvas, self.card_inner, self.card):
-                target = self.card_canvas
-                break
-            if widget in (self.picker_canvas, self.picker_list):
-                target = self.picker_canvas
-                break
-            widget = getattr(widget, "master", None)
-        if target is None:
-            return
-        target.yview_scroll(int(-event.delta / 120), "units")
+        return list(CARD_ROWS)
 
     def _sync_card_scroll(self) -> None:
         bbox = self.card_canvas.bbox("all")
@@ -1349,7 +1423,7 @@ class LoadoutView:
             needed = self._slot_level(self.picking_slot, object_id)
             row = make_frame(self.picker_list, bg=color)
             row.pack(fill="x", padx=4, pady=2)
-            make_cheat_squares(row, catalog.cheat_rank(needed), color, size=10, plate="#EDEFF3").pack(
+            make_cheat_squares(row, catalog.cheat_rank(needed), color, size=10).pack(
                 side="left", padx=(6, 8), pady=6
             )
             art = attach_game_icon(row, object_id, color)
@@ -1533,6 +1607,7 @@ class PerksView:
         canvas.configure(yscrollcommand=scroll.set)
         canvas.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
+        mark_wheel_scroll(canvas, scroll)
         self.list_frame = make_frame(canvas, bg=PANEL)
         window = canvas.create_window((0, 0), window=self.list_frame, anchor="nw")
         self.list_frame.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -1756,14 +1831,23 @@ class PresetsView:
         )
         make_button(buttons, "Delete", self._delete, bg="#6B3A3A", activebackground="#8B4A4A").pack(side="left")
 
+        list_wrap = make_frame(self.frame)
+        list_wrap.pack(fill="x", pady=6)
+        list_wrap.columnconfigure(0, weight=1)
         self.list_box = tk.Listbox(
-            self.frame, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=8
+            list_wrap, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=8
         )
-        self.list_box.pack(fill="x", pady=6)
+        self.list_box.grid(row=0, column=0, sticky="ew")
         self.list_box.bind("<<ListboxSelect>>", lambda _: self._on_select())
+        add_axis_scrollbars(self.list_box, horizontal=True, vertical=True)
 
-        self.detail = tk.Text(self.frame, bg=PANEL, fg=FG, height=16, font=("Consolas", 9), wrap="none")
-        self.detail.pack(fill="both", expand=True)
+        detail_wrap = make_frame(self.frame)
+        detail_wrap.pack(fill="both", expand=True)
+        detail_wrap.columnconfigure(0, weight=1)
+        detail_wrap.rowconfigure(0, weight=1)
+        self.detail = tk.Text(detail_wrap, bg=PANEL, fg=FG, height=16, font=("Consolas", 9), wrap="none")
+        self.detail.grid(row=0, column=0, sticky="nsew")
+        add_axis_scrollbars(self.detail, horizontal=True, vertical=True)
 
     def refresh(self) -> None:
         self.folder.configure(text=str(loadouts.loadouts_dir()))
@@ -1892,10 +1976,15 @@ class BackupsView:
         make_button(
             buttons, "Restore selected", self._restore, bg="#2E6B4F", activebackground="#3D8B65"
         ).pack(side="left")
+        list_wrap = make_frame(self.frame)
+        list_wrap.pack(fill="both", expand=True, pady=6)
+        list_wrap.columnconfigure(0, weight=1)
+        list_wrap.rowconfigure(0, weight=1)
         self.list_box = tk.Listbox(
-            self.frame, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=18
+            list_wrap, bg=PANEL, fg=FG, selectbackground="#3D6EA8", font=("Segoe UI", 10), height=18
         )
-        self.list_box.pack(fill="both", expand=True, pady=6)
+        self.list_box.grid(row=0, column=0, sticky="nsew")
+        add_axis_scrollbars(self.list_box, horizontal=True, vertical=True)
 
     def refresh(self) -> None:
         self.list_box.delete(0, "end")

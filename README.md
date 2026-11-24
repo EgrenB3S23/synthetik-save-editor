@@ -1,6 +1,6 @@
 # Synthetik Save Editor
 
-A simple command-line tool for editing **Synthetik** (Synthetik 1) save files on PC.
+A simple command-line tool for editing **Synthetik** (Synthetik 1) save files on PC. Compatibility tested against patch 27, and it should work at least as far back as patch 26.
 
 ![Main menu screenshot](images/SSEv1_1_main_menu.png)
 
@@ -46,8 +46,9 @@ python main.py
 - **Daily run ticket** (`drun`): reset it to 1 so the once-a-day run is available again. Starting a run sets it to 0. The game normally writes 1 about 12 hours after the last login.
 - **Loadout presets**: save one subclass's slots + tokens to a file in `loadouts/`, load it back, rename, delete.
 - **Graphical editor** (`py main.py --gui`): clickable menu matching the CLI. The loadout card is one option; perk boosts, data, presets, backups, and viewing save loadouts are the others. The first time you open a loadout it can crop item/perk/weapon icons from your installed Synthetik `data.win` and cache them in `game_icons/` (not in git). To drop that feature later: delete `game_icons.py`, the `game_icons/` folder, and the few `game_icons` lines in `gui.py`.
-- **Cheat levels** on each slot pick (Vanilla first, then widen that pick). The loadout is legal at the highest level any slot needs. Black squares on the card show that level. The game may still reset illegal loadouts.
+- **Cheat levels** on each slot pick (Vanilla first, then widen that pick). The loadout is legal at the highest level any slot needs. White squares on the card show that level. The game may still reset illegal loadouts.
 - **Restore a backup** of the save the tool created.
+- **Start Synthetik** from the menu (option 11). Close the game again before the next edit.
 
 ---
 
@@ -206,7 +207,7 @@ This is an unofficial fanmade tool, not affiliated with the Synthetik developers
 
 ### Versions used during testing
 
-- Synthetik: 26.1, on Steam. Latest as of 2026-07, and has been for about 5 years.
+- Synthetik 1: compatibility tested against patch 27. Earlier testing was on patch 26.1. Should also work at least as far back as patch 26.
 - Python: 3.13.5
 - OS: Windows 10
 

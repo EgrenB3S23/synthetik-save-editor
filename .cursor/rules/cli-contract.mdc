@@ -1,0 +1,14 @@
+---
+description: Keep the v1.1 command-line invocation contract stable
+alwaysApply: true
+---
+
+# Command-line contract
+
+`main.py` is a public command-line interface. Existing `.bat` files and scripts pass a save path as the first non-flag argument.
+
+- Do not change v1.1 path handling: no arg → prompt; path arg → use it or exit 1; never turn a missing argv path into a prompt.
+- `--gui` must not steal the path slot. `py main.py "D:\path\Save.sav"` must keep working.
+- Do not add required flags or rename `main.py`.
+
+See `AGENTS.md` (Command-line interface) and the README section of the same name.

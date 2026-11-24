@@ -232,6 +232,7 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
         "8": "8. Loadouts: Open graphical editor",
         "9": "9. Restore a backup of this save",
         "10": _daily_run_option(save_path),
+        "11": "11. Start Synthetik",
         "0": "0. Exit",
     }
 
@@ -244,7 +245,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "0"):
+    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "0"):
         print(options[key])
     print()
 
@@ -310,6 +311,8 @@ def run_menu(save_path: Path) -> Path | None:
             restore_backup_flow(save_path)
         elif choice == "10":
             reset_daily_run(save_path)
+        elif choice == "11":
+            print(save_paths.start_synthetik())
         elif choice == "0":
             return None
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -198,6 +199,38 @@ def _input_prefilled_windows(prompt: str, default: str) -> str | None:
             buffer.append(char)
             sys.stdout.write(char)
             sys.stdout.flush()
+
+
+STEAM_APP_ID = "528230"
+
+
+def synthetik_executable() -> Path | None:
+    """Installed SYNTHETIK.exe, using the same data.win search as the icon cache."""
+    try:
+        import game_icons
+
+        data_win = game_icons._data_win_path()
+    except Exception:
+        data_win = None
+    if data_win is None:
+        return None
+    exe = data_win.with_name("SYNTHETIK.exe")
+    return exe if exe.is_file() else None
+
+
+def start_synthetik() -> str:
+    """Launch the game and return a short status line. Does not wait for it to exit."""
+    exe = synthetik_executable()
+    if exe is not None:
+        subprocess.Popen([str(exe)], cwd=str(exe.parent))
+        return f"Started {exe}."
+    if sys.platform == "win32":
+        try:
+            os.startfile(f"steam://rungameid/{STEAM_APP_ID}")
+        except OSError as error:
+            return f"Could not start Synthetik: {error}"
+        return "Asked Steam to start Synthetik."
+    return "Could not find SYNTHETIK.exe."
 
 
 def wait_before_exit() -> None:

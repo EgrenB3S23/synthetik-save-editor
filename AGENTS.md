@@ -95,6 +95,7 @@ repurpose 1–3** (perk all / one / show) without an explicit request. `0` stays
 | `8` | Open graphical editor |
 | `9` | Restore a timestamped `Save.backup.*` next to this save |
 | `10` | Reset the daily run ticket (`drun`) to `1` |
+| `11` | Start Synthetik |
 | `0` | Exit |
 
 Loadouts submenu: `1` save preset, `2` load preset, `3` list, `4` view save, `5` view preset, `6` rename, `7` delete, `8` edit one slot, `0` back.

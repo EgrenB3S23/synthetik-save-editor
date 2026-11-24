@@ -35,8 +35,8 @@
       "daily_boost": "1.000000",
       "class_group": "Specialist",
       "equipped_in_this_save": [],
-      "name_guess": "AMMO REGEN",
-      "confidence": "exact",
+      "name_guess": "MULTIPLY",
+      "confidence": "catalog",
       "description_guess": "Grants ammo regeneration for the duration of the effect"
     },
     {
@@ -203,7 +203,7 @@
       "daily_boost": "1.000000",
       "class_group": "Commando",
       "equipped_in_this_save": [],
-      "name_guess": "CLASS WEAPON",
+      "name_guess": "WEAPON DROP",
       "subtitle": null,
       "confidence": "catalog",
       "description_guess": null
@@ -336,7 +336,7 @@
           "slot": 6
         }
       ],
-      "name_guess": "SPOTTER",
+      "name_guess": "SHADOW DANCE",
       "subtitle": null,
       "confidence": "catalog",
       "description_guess": "Companion drone will mark specific targets for 8 seconds - Eliminating the target in time grants [§] credits / and a [$%] damage buff for all allies"
@@ -434,7 +434,7 @@
       "daily_boost": "1.000000",
       "class_group": "Commando",
       "equipped_in_this_save": [],
-      "name_guess": "DEXTERITY",
+      "name_guess": "DRILL",
       "subtitle": null,
       "confidence": "catalog",
       "description_guess": "Each consecutive hit grants one stack of Dexterity with [§%] increased Damage and [$%] reduced weapon deviation /  / Stacks 10 times / Misses reset the stacks"
@@ -446,7 +446,7 @@
       "daily_boost": "1.000000",
       "class_group": "Commando",
       "equipped_in_this_save": [],
-      "name_guess": "DRONE",
+      "name_guess": "DRONE MOD",
       "confidence": "contains",
       "description_guess": null
     },
@@ -572,7 +572,7 @@
       "daily_boost": "1.400000",
       "class_group": "Specialist",
       "equipped_in_this_save": [],
-      "name_guess": "UNSTOPPABLE FORCE",
+      "name_guess": "FORCE UNLEASHED",
       "subtitle": null,
       "confidence": "catalog",
       "description_guess": null
@@ -690,8 +690,8 @@
           "slot": 7
         }
       ],
-      "name_guess": null,
-      "confidence": "none"
+      "name_guess": "OVERDRIVE",
+      "confidence": "catalog"
     },
     {
       "id": "obj_perk_heatup",
@@ -700,12 +700,8 @@
       "daily_boost": "1.000000",
       "class_group": "Specialist",
       "equipped_in_this_save": [],
-      "name_guess": null,
-      "confidence": "ambiguous",
-      "candidates": [
-        "HEAT",
-        "HEAT!"
-      ]
+      "name_guess": "FORGED BY FIRE",
+      "confidence": "catalog"
     },
     {
       "id": "obj_perk_hframe",
@@ -781,7 +777,7 @@
           "slot": 7
         }
       ],
-      "name_guess": "OVERDRIVE",
+      "name_guess": "WELL OILED",
       "subtitle": null,
       "confidence": "catalog",
       "description_guess": "Items cool down [§%] faster and weapons eject up to [$%] faster if heat is over 40 /  / Increases movement speed by 30"
@@ -1221,7 +1217,7 @@
       "daily_boost": "1.000000",
       "class_group": "Guardian",
       "equipped_in_this_save": [],
-      "name_guess": "BOILING BLOOD INFUSION",
+      "name_guess": "RECOVERY",
       "subtitle": null,
       "confidence": "catalog",
       "description_guess": "Taking health damage over 50 or collecting powerups increases maximum health by up to @1 depending on current heat - Infusion stacks @2 times /  / At max stacks Infusion heals instead"
@@ -1465,8 +1461,8 @@
       "daily_boost": "1.000000",
       "class_group": "Rogue",
       "equipped_in_this_save": [],
-      "name_guess": null,
-      "confidence": "none"
+      "name_guess": "KEEPING COOL",
+      "confidence": "catalog"
     },
     {
       "id": "obj_perk_statusextender",
