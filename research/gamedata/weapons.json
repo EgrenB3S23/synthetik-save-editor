@@ -56,7 +56,7 @@
       "daily_boost": "1.000000",
       "class_group": null,
       "equipped_in_this_save": [],
-      "name_guess": "A9 INFINITE",
+      "name_guess": "AUTO-9/45",
       "short_code": "INF",
       "confidence": "name-prefix"
     },
@@ -534,8 +534,9 @@
       "daily_boost": null,
       "class_group": null,
       "equipped_in_this_save": [],
-      "name_guess": null,
-      "confidence": "none"
+      "name_guess": "K98 CLASSIC",
+      "short_code": "K98",
+      "confidence": "catalog"
     },
     {
       "id": "obj_weapon_K98_59",
@@ -544,9 +545,9 @@
       "daily_boost": null,
       "class_group": null,
       "equipped_in_this_save": [],
-      "name_guess": "K98 CLASSIC",
-      "short_code": "K98",
-      "confidence": "code"
+      "name_guess": "HUMAN MODEL 9800K",
+      "short_code": "98K",
+      "confidence": "catalog"
     },
     {
       "id": "obj_weapon_KSG_60",

@@ -16,6 +16,8 @@ TODO.md
 build/
 dist/
 *.spec
+!synthetik-save-editor.spec
+!synthetik-save-editor-cli.spec
 
 __pycache__/
 *.py[cod]

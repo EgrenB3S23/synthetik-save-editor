@@ -1031,10 +1031,10 @@
       "daily_boost": "1.000000",
       "class_group": "Rogue",
       "equipped_in_this_save": [],
-      "name_guess": "KEEPING COOL",
+      "name_guess": "POWER TUNING",
       "subtitle": null,
       "confidence": "catalog",
-      "description_guess": "Hitting active reload refreshes [$%] of shields, grants a [§] shield buff that lasts 3 seconds and reduces current weapon heat by 10"
+      "description_guess": "Increases Headshot damage and running ammo regeneration by [§%] if weapon heat is below @1 /  / Passively Increases weapon heat generation by [$%]"
     },
     {
       "id": "obj_perk_prepared",
@@ -1207,8 +1207,10 @@
       "daily_boost": "1.000000",
       "class_group": "Rogue",
       "equipped_in_this_save": [],
-      "name_guess": null,
-      "confidence": "none"
+      "name_guess": "KEEPING COOL",
+      "subtitle": null,
+      "confidence": "catalog",
+      "description_guess": "Hitting active reload refreshes [$%] of shields, grants a [§] shield buff that lasts 3 seconds and reduces current weapon heat by 10"
     },
     {
       "id": "obj_perk_recovery",
@@ -1461,8 +1463,10 @@
       "daily_boost": "1.000000",
       "class_group": "Rogue",
       "equipped_in_this_save": [],
-      "name_guess": "KEEPING COOL",
-      "confidence": "catalog"
+      "name_guess": "FREEZE!",
+      "subtitle": null,
+      "confidence": "catalog",
+      "description_guess": "Standing still while in combat grants [$] seconds of [§%] total damage absorbtion, @1 seconds cooldown"
     },
     {
       "id": "obj_perk_statusextender",

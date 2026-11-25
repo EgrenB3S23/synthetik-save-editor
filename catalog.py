@@ -15,7 +15,7 @@ RANDOM_MODULE_ID = "obj_perk_randomperk"
 CONFIRMED_NAMES = {
     RANDOM_MODULE_ID: "RANDOM MODULE",
     "obj_perk_engineer": "Core: Drone Zeal",
-    "obj_item71_sentry": "LMG Sentry Turret",
+    "obj_item98_minisentry": "'Seth-Up' Suitcase Sentry",
     "obj_item126_missiledrone": "Missile Drone",
     "obj_item6_reloader": "Field Supply",
     "obj_item107_ministim": "Magic Mag",
@@ -30,11 +30,17 @@ CONFIRMED_NAMES = {
     "obj_perk_drill": "Drill",
     "obj_perk_drone1": "Drone Mod",
     "obj_perk_dance": "Shadow Dance",
-    "obj_perk_standstill": "Keeping Cool",
+    "obj_perk_powertuning": "Power Tuning",
+    "obj_perk_reactivereload": "Keeping Cool",
+    "obj_perk_standstill": "Freeze!",
+    "obj_perk_specialized": "DMR Conversion",
+    "obj_perk_specializedammo": "Specialized Ammo",
+    "obj_perk_killer": "Killer",
+    "obj_perk_diehard": "Die Hard",
     "obj_perk_recovery": "Recovery",
     "obj_weapon_PTL_6": "P33 Compact",
     "obj_weapon_REV_9": "Last Breath",
-    "obj_weapon_A9_55": "A9 Infinite",
+    "obj_weapon_A9_55": "Auto-9/45",
     "obj_weapon_TEC_84": "TEC-9",
     "obj_weapon_DE_94": "Titanium Eagle",
     "obj_weapon_SUP_67": "P25 Overdrive",
@@ -45,11 +51,15 @@ CONFIRMED_NAMES = {
     "obj_weapon_LSP_21": "Kaida Laser Pistol",
     "obj_weapon_HLP_64": "PPQ-H Laser Pistol",
     "obj_weapon_PXS_10": "PXS Covert Ops",
+    # The in-game K98 Classic uses the K95 object. obj_weapon_K98_59 is the fusion rifle.
+    "obj_weapon_K95_75": "K98 Classic",
+    "obj_weapon_K98_59": "Human Model 9800K",
     "obj_item122_targetcpu": "Targeting Laser",
     "obj_item130_riotguard": "Guardian",
     "obj_item94_dagger": "Scoundrel's Dagger",
     "obj_item80_masterkey": "Dragon's Masterkey",
     "obj_item12_reflector": "RV Rebuke System",
+    "obj_item27_berserk": "Black Berserk Charm",
 }
 
 CLASS_GROUP_BY_INDEX = {
@@ -88,7 +98,7 @@ UNIVERSAL_PISTOLS = [
     "obj_weapon_PTL_6",  # P33 Compact
     "obj_weapon_REP_11",  # 57 Fusion Classic
     "obj_weapon_REV_9",  # Last Breath
-    "obj_weapon_A9_55",  # A9 Infinite
+    "obj_weapon_A9_55",  # Auto-9/45
     "obj_weapon_TEC_84",  # TEC-9
     "obj_weapon_DE_94",  # Titanium Eagle
     "obj_weapon_SUP_67",  # P25 Overdrive
@@ -228,6 +238,12 @@ def cheat_square_text(level: str) -> str:
 
 
 def _gamedata_dir() -> Path:
+    """Read-only name lists. A frozen exe keeps them inside the PyInstaller bundle."""
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled:
+        inside = Path(bundled) / "research" / "gamedata"
+        if inside.is_dir():
+            return inside
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).resolve().parent
     else:
@@ -275,67 +291,81 @@ _NAME_SOURCES = (
 )
 
 
+_entry_index: dict[str, dict] | None = None
+_search_cache: dict[str, str] = {}
+
+
+def _entry_for(object_id: str) -> dict | None:
+    """One lookup for name, class, and description. Built once from the JSON files."""
+    global _entry_index
+    if _entry_index is None:
+        index: dict[str, dict] = {}
+        for file_name, key in _NAME_SOURCES:
+            for entry in _entries(file_name, key):
+                entry_id = entry.get("id")
+                if entry_id and str(entry_id) not in index:
+                    index[str(entry_id)] = entry
+        _entry_index = index
+    return _entry_index.get(object_id)
+
+
 def display_name(object_id: str | None) -> str:
     """Player-facing in-game label when we have one, otherwise the object suffix."""
     if not object_id:
         return "(empty)"
     if object_id in CONFIRMED_NAMES:
         return CONFIRMED_NAMES[object_id]
-    for file_name, key in _NAME_SOURCES:
-        for entry in _entries(file_name, key):
-            if entry.get("id") == object_id:
-                guess = entry.get("name_guess")
-                if guess:
-                    return str(guess).title() if guess == guess.upper() else str(guess)
-                break
+    entry = _entry_for(object_id)
+    if entry is not None:
+        guess = entry.get("name_guess")
+        if guess:
+            return str(guess).title() if guess == guess.upper() else str(guess)
     return loadouts.display_slot(object_id)
 
 
 def class_group_of(object_id: str | None) -> str | None:
     if not object_id or object_id == RANDOM_MODULE_ID:
         return None
-    for file_name, key in _NAME_SOURCES:
-        for entry in _entries(file_name, key):
-            if entry.get("id") == object_id:
-                group = entry.get("class_group")
-                if group:
-                    return group.replace(" (class core)", "")
-                return None
+    entry = _entry_for(object_id)
+    if entry is None:
+        return None
+    group = entry.get("class_group")
+    if group:
+        return str(group).replace(" (class core)", "")
     return None
 
 
 def entry_search_text(object_id: str) -> str:
-    """All text the filter matches against for one object.
-
-    The in-game label is first so queries like "magic mag" hit the official name.
-    """
+    """Name, id, class, and description text the filter matches against."""
     parts = [display_name(object_id), object_id, class_group_of(object_id) or ""]
-    for file_name, key in _NAME_SOURCES:
-        for entry in _entries(file_name, key):
-            if entry.get("id") != object_id:
-                continue
-            for field in ("name_guess", "subtitle", "description_guess"):
-                value = entry.get(field)
-                if isinstance(value, str):
-                    parts.append(value)
-            for value in entry.values():
-                if isinstance(value, str):
-                    parts.append(value)
-            break
+    entry = _entry_for(object_id)
+    if entry is not None:
+        for field in ("name_guess", "subtitle", "description_guess"):
+            value = entry.get(field)
+            if isinstance(value, str):
+                parts.append(value)
+        candidates = entry.get("candidates")
+        if isinstance(candidates, list):
+            parts.extend(str(value) for value in candidates)
     return " ".join(parts)
 
 
-def subsequence_match(query: str, text: str) -> bool:
-    """True if query characters appear in order in text (*q*u*e*r*y*). Case-insensitive."""
-    needle = query.lower()
-    haystack = text.lower()
-    index = 0
-    for char in needle:
-        index = haystack.find(char, index)
-        if index < 0:
-            return False
-        index += 1
-    return True
+def search_haystack(object_id: str) -> str:
+    """Lowercased search text, built once per object."""
+    cached = _search_cache.get(object_id)
+    if cached is None:
+        cached = " ".join(entry_search_text(object_id).lower().split())
+        _search_cache[object_id] = cached
+    return cached
+
+
+def filter_match(query: str, text: str) -> bool:
+    """True when the typed text appears as written, ignoring case and extra spaces."""
+    needle = " ".join(query.lower().split())
+    if not needle:
+        return True
+    haystack = text if text == text.lower() else " ".join(text.lower().split())
+    return needle in haystack
 
 
 def item_id_for_number(number: int) -> str | None:
@@ -477,8 +507,14 @@ def vanilla_items(class_index: int) -> list[str]:
     return _in_pool(UNIVERSAL_ITEMS + CLASS_ITEMS.get(class_index, []), "items")
 
 
+_token_option_cache: dict[str, list[tuple[int, str]]] = {}
+
+
 def token_options(family: str) -> list[tuple[int, str]]:
     """(token number, object id) pairs for placing a weapon or item token."""
+    cached = _token_option_cache.get(family)
+    if cached is not None:
+        return cached
     rows: list[tuple[int, str]] = []
     if family.startswith("i"):
         for entry in _entries("items.json", "items"):
@@ -503,6 +539,7 @@ def token_options(family: str) -> list[tuple[int, str]]:
             seen.add(number)
             rows.append((number, str(object_id)))
     rows.sort(key=lambda row: row[0])
+    _token_option_cache[family] = rows
     return rows
 
 

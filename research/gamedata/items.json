@@ -360,7 +360,7 @@
       "class_group": null,
       "equipped_in_this_save": [],
       "item_number": 27,
-      "name_guess": "BLACK BERSRK CHARM",
+      "name_guess": "BLACK BERSERK CHARM",
       "subtitle": "STRENGTH IN DARK TIMES",
       "confidence": "catalog",
       "description_guess": "+50% max health. Removes shield and grants firerate, health regeneration and damage absorption. Stronger effect at lower health"
@@ -1352,7 +1352,7 @@
       "class_group": null,
       "equipped_in_this_save": [],
       "item_number": 98,
-      "name_guess": "'SETH-UP'",
+      "name_guess": "'SETH-UP' SUITCASE SENTRY",
       "subtitle": "SUITCASE SENTRY",
       "confidence": "catalog",
       "description_guess": "Deploys a stationary suitcase turret, attacking near enemies with a integrated laser weapon"

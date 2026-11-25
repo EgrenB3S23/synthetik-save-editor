@@ -444,8 +444,9 @@ PERK_ALIASES = {
     "dance": "SHADOW DANCE",
     "longrange": "KEEPING DISTANCE",
     "specialized": "DMR CONVERSION",
-    "powertuning": "KEEPING COOL",
-    "standstill": "KEEPING COOL",
+    "powertuning": "POWER TUNING",
+    "reactivereload": "KEEPING COOL",
+    "standstill": "FREEZE!",
     "recovery": "RECOVERY",
     "healthy": "AGAINST THE ODDS",
     "stealback": "BLOOD BORNE",
@@ -470,6 +471,26 @@ PERK_ALIASES = {
     "force": "FORCE UNLEASHED",
     "sunrise": "SUN RISING",
     "dodgeheat": "UNCEASING",
+}
+
+# These labels sit after SUN RISING, so the class-module catalog parse never sees them.
+OUTSIDE_CATALOG = {
+    "FREEZE!": {
+        "name": "FREEZE!",
+        "subtitle": None,
+        "description": (
+            "Standing still while in combat grants [$] seconds of [§%] total damage absorbtion, "
+            "@1 seconds cooldown"
+        ),
+    },
+    "POWER TUNING": {
+        "name": "POWER TUNING",
+        "subtitle": None,
+        "description": (
+            "Increases Headshot damage and running ammo regeneration by [§%] if weapon heat is below @1"
+            " /  / Passively Increases weapon heat generation by [$%]"
+        ),
+    },
 }
 
 
@@ -525,7 +546,11 @@ def assign_perk_catalog(
     used_names: set[str] = set()
 
     def apply(object_id: str, label: str) -> None:
-        entry = by_name.get(label) or {"name": label, "subtitle": None, "description": None}
+        entry = by_name.get(label) or OUTSIDE_CATALOG.get(label) or {
+            "name": label,
+            "subtitle": None,
+            "description": None,
+        }
         assigned[object_id] = {
             "name_guess": entry["name"],
             "subtitle": entry.get("subtitle"),
@@ -564,6 +589,8 @@ def assign_perk_catalog(
         "drill",
         "drone1",
         "dance",
+        "powertuning",
+        "reactivereload",
         "standstill",
         "recovery",
     }
@@ -572,7 +599,11 @@ def assign_perk_catalog(
         if object_id in perk_ids and (object_id not in used_ids or suffix in force_alias):
             apply(object_id, label)
 
-    remaining_catalog = [entry for entry in catalog if entry["name"] not in used_names]
+    remaining_catalog = [
+        entry
+        for entry in catalog
+        if entry["name"] not in used_names
+    ]
     remaining_ids = [object_id for object_id in perk_ids if object_id not in used_ids]
     pairs: list[tuple[int, str, int]] = []
     for object_id in remaining_ids:

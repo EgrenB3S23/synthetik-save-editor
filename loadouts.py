@@ -602,13 +602,13 @@ def edit_slot_flow(save_path: Path) -> None:
     )
     shown: list[str] = []
     for object_id in options:
-        if query and not catalog.subsequence_match(query, catalog.entry_search_text(object_id)):
+        if query and not catalog.filter_match(query, catalog.entry_search_text(object_id)):
             continue
         shown.append(object_id)
     shown.sort(
         key=lambda object_id: (
             object_id != current,
-            catalog.cheat_rank(
+            -catalog.cheat_rank(
                 catalog.minimum_cheat_level(object_id, slot, class_index, subclass_index=subclass_index)
             ),
             catalog.display_name(object_id).lower(),

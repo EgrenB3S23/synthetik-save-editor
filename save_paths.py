@@ -235,7 +235,16 @@ def start_synthetik() -> str:
 
 def wait_before_exit() -> None:
     """Keep the window open when double-clicking the script or .exe."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    try:
+        interactive = (
+            sys.stdin is not None
+            and sys.stdout is not None
+            and sys.stdin.isatty()
+            and sys.stdout.isatty()
+        )
+    except (AttributeError, ValueError):
+        interactive = False
+    if not interactive:
         return
 
     try:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tkinter as tk
+
 import edits
 import loadouts
 import save_paths
@@ -40,6 +42,95 @@ def resolve_user_path(user_input: str) -> Path | None:
     return None
 
 
+def browse_save_file(initial_dir: Path | None = None) -> Path | None:
+    """Windows file window. None means the user cancelled."""
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except tk.TclError:
+        pass
+    try:
+        folder = initial_dir if initial_dir is not None and initial_dir.is_dir() else None
+        while True:
+            chosen = filedialog.askopenfilename(
+                parent=root,
+                title="Choose Save.sav",
+                initialdir=str(folder) if folder is not None else "",
+                filetypes=[
+                    ("Synthetik save", "Save.sav"),
+                    ("Save files", "*.sav"),
+                    ("All files", "*.*"),
+                ],
+            )
+            if not chosen:
+                return None
+            path = Path(chosen)
+            if not path.is_file():
+                messagebox.showerror("Not found", str(path), parent=root)
+                continue
+            if path.name != DEFAULT_SAVE_NAME and not messagebox.askyesno(
+                "Different file name",
+                f"This tool expects a file named {DEFAULT_SAVE_NAME}.\n\nUse {path.name} anyway?",
+                parent=root,
+            ):
+                continue
+            return path
+    finally:
+        root.destroy()
+
+
+def confirm_or_browse_save(found: Path | None) -> Path | None:
+    """Accept an auto-found save, or pick another. None means the user cancelled."""
+    import tkinter as tk
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except tk.TclError:
+        pass
+    try:
+        if found is not None and found.is_file():
+            answer = messagebox.askyesnocancel(
+                "Synthetik save",
+                f"Use this save file?\n\n{found}\n\nYes uses it. No opens a file window so you can pick another.",
+                parent=root,
+            )
+            if answer is None:
+                return None
+            if answer:
+                return found
+        else:
+            messagebox.showinfo(
+                "Synthetik save",
+                "No Save.sav was found in the usual folder.\nChoose your save file.",
+                parent=root,
+            )
+    finally:
+        root.destroy()
+
+    initial = found.parent if found is not None else save_paths.local_appdata_dir() / "Synthetik"
+    return browse_save_file(initial)
+
+
+def resolve_startup_save() -> Path | None:
+    """Remembered save if that file still exists, otherwise find one and ask."""
+    remembered = save_paths.load_last_save_path()
+    if remembered is not None:
+        return remembered
+    candidate = save_paths.best_candidate_save_path()
+    found = candidate if candidate.is_file() else None
+    try:
+        return confirm_or_browse_save(found)
+    except tk.TclError:
+        return ask_save_path()
+
+
 def ask_save_path() -> Path:
     """Ask the user for a save file path, pre-filled with a sensible default."""
     prefill = save_paths.prefilled_save_path()
@@ -69,13 +160,78 @@ def ask_save_path() -> Path:
     return save_path
 
 
+def _console_is_interactive() -> bool:
+    try:
+        return (
+            sys.stdin is not None
+            and sys.stdout is not None
+            and sys.stdin.isatty()
+            and sys.stdout.isatty()
+        )
+    except (AttributeError, ValueError):
+        return False
+
+
+def _emit(message: str) -> None:
+    if sys.stdout is not None:
+        print(message)
+
+
+def _show_path_error(message: str) -> None:
+    """Tell the user a command-line path failed. A window is used when there is no console."""
+    if sys.stdout is not None:
+        _emit(message)
+        save_paths.wait_before_exit()
+        return
+    from tkinter import messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except tk.TclError:
+        pass
+    messagebox.showerror("Synthetik save", message, parent=root)
+    root.destroy()
+
+
 def validate_save_path(save_path: Path) -> bool:
     """Make sure the file exists before we try to edit it."""
-    if save_path.is_file():
-        return True
+    return save_path.is_file()
 
-    print(f"Save file not found: {save_path}")
-    return False
+
+def acquire_save(argv: list[str]) -> Path | None:
+    """Resolve the save for this launch. A bad path argument exits 1. Cancel returns None."""
+    if argv:
+        save_path = resolve_user_path(argv[0])
+        if save_path is None:
+            _show_path_error(f"Invalid save path: {argv[0]}")
+            sys.exit(1)
+        if not validate_save_path(save_path):
+            _show_path_error(f"Save file not found: {save_path}")
+            sys.exit(1)
+        remember_save_path(save_path)
+        return save_path
+
+    save_path = resolve_startup_save()
+    if save_path is None or not validate_save_path(save_path):
+        if _console_is_interactive():
+            _emit("No save file selected.")
+            save_paths.wait_before_exit()
+        return None
+    remember_save_path(save_path)
+    return save_path
+
+
+def launch_gui() -> None:
+    """Open the window. This is what editor.pyw and --gui call after the save path is known."""
+    argv = [arg for arg in sys.argv[1:] if arg != "--gui"]
+    save_path = acquire_save(argv)
+    if save_path is None:
+        return
+    import gui
+
+    gui.open_loadout_editor(save_path)
 
 
 def ask_perk_boost_value() -> str | None:
@@ -225,7 +381,6 @@ def build_menu_options(save_path: Path) -> dict[str, str]:
         "1": "1. Perks: Set all class perks' daily boost to chosen value",
         "2": "2. Perks: Set single class perk's daily boost to chosen value",
         "3": "3. Perks: Show current class perks' daily boosts",
-        "4": "4. Perks: Randomize daily boosts from a count:value list",
         "5": f"5. {data_option}",
         "6": "6. Choose a different save file",
         "7": "7. Loadouts: View loadouts, save or load presets",
@@ -245,7 +400,7 @@ def print_menu(save_path: Path) -> dict[str, str]:
     print("=== Synthetik Save Editor ===")
     print(f"Save file: {save_path.resolve()}")
     print()
-    for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "0"):
+    for key in ("1", "2", "3", "5", "6", "7", "8", "9", "10", "11", "0"):
         print(options[key])
     print()
 
@@ -298,8 +453,12 @@ def run_menu(save_path: Path) -> Path | None:
             if data_value is not None:
                 edits.apply_edit(save_path, lambda lines: edits.set_data(lines, data_value))
         elif choice == "6":
-            new_path = ask_save_path()
-            if validate_save_path(new_path):
+            initial = save_path.parent if save_path.parent.is_dir() else None
+            try:
+                new_path = browse_save_file(initial)
+            except tk.TclError:
+                new_path = ask_save_path()
+            if new_path is not None and validate_save_path(new_path):
                 return new_path
         elif choice == "7":
             loadouts.run_loadout_menu(save_path)
@@ -323,37 +482,17 @@ def remember_save_path(save_path: Path) -> None:
 
 
 def main() -> None:
+    argv = [arg for arg in sys.argv[1:] if arg != "--gui"]
+    if "--gui" in sys.argv[1:]:
+        launch_gui()
+        return
+
     print()
     print("Welcome to Egren's Synthetik Save Editor!")
     print()
 
-    argv = [arg for arg in sys.argv[1:] if arg != "--gui"]
-    open_gui = "--gui" in sys.argv[1:]
-
-    if argv:
-        save_path = resolve_user_path(argv[0])
-
-        if save_path is None:
-            print(f"Invalid save path: {argv[0]}")
-            save_paths.wait_before_exit()
-            sys.exit(1)
-
-        if not validate_save_path(save_path):
-            save_paths.wait_before_exit()
-            sys.exit(1)
-
-        remember_save_path(save_path)
-    else:
-        while True:
-            save_path = ask_save_path()
-            if validate_save_path(save_path):
-                remember_save_path(save_path)
-                break
-
-    if open_gui:
-        import gui
-
-        gui.open_loadout_editor(save_path)
+    save_path = acquire_save(argv)
+    if save_path is None:
         return
 
     while True:

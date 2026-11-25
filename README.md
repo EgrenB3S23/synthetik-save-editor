@@ -1,54 +1,51 @@
 # Synthetik Save Editor
 
-A simple command-line tool for editing **Synthetik** (Synthetik 1) save files on PC. Compatibility tested against patch 27, and it should work at least as far back as patch 26.
+A save editor for **Synthetik** (Synthetik 1) on PC. Download the release and double-click `synthetik-save-editor.exe`. That opens the window. A text menu is in the same download if you want it. Compatibility tested against patch 27, and it should work at least as far back as patch 26.
 
-![Main menu screenshot](images/SSEv1_1_main_menu.png)
+![Loadout editor](images/SSEv1_2_loadout.png)
 
-## No Python? Use the `.exe`
+## Ways to start
 
-1. Download **`synthetik-save-editor.exe`** from the [latest release](https://github.com/EgrenB3S23/synthetik-save-editor/releases/latest).
-2. Put it anywhere you like (Desktop, a folder next to your save, etc.).
-3. Double-click it, or run from a terminal. Paste your save path when prompted.
+Download the release and double-click **`synthetik-save-editor.exe`**. That opens the window. No Python install, and no batch file.
 
-   Or run with a path argument:
+The same download includes **`synthetik-save-editor-cli.exe`**. Double-click that one only if you want the numbered text menu instead.
 
-   ```console
-   synthetik-save-editor.exe "C:\Users\<UserName>\AppData\Local\Synthetik"
-   ```
+Windows 10/11, 64-bit. A shortcut on the desktop can point at the exe. The 1.2 package is not on the [releases page](https://github.com/EgrenB3S23/synthetik-save-editor/releases/latest) yet. The file there today is version 1.1, which is the older text-menu program.
 
-Same menus and backups as the Python version. Windows 10/11, 64-bit.
+The window opens on the loadout card. **Options** on the menu bar has perk boosts, data, presets, backups, the daily run ticket, and starting Synthetik.
 
-GUI: `synthetik-save-editor.exe --gui`, or pick **Open graphical editor** from the menu.
+### The save file
 
----
+The first start looks for `%LOCALAPPDATA%\Synthetik\Save.sav`. A window asks you to use that file or pick another. The choice is stored in `%APPDATA%\synthetik-save-editor\config.json`. Later starts use it while the file is still there. **Options → Choose a different save file**, **Change…** in the window, or text-menu option **6** picks a different one. Close Synthetik before you edit.
 
-## Or run from source (Python)
+A path on the command line skips that question, for example `synthetik-save-editor.exe "C:\Users\<UserName>\AppData\Local\Synthetik"`. An old shortcut that already passes a save path keeps working. The full rules are in [Command-line interface](#command-line-interface) below.
 
-To run, run this in cmd or whatever flavor of shell you prefer:
+### From the source folder
 
-```console
-py main.py
-```
+Use this when you have the project files and would rather not run a downloaded exe.
 
-or:
+| Start this | What opens |
+| --- | --- |
+| `start.bat` | The window. If Python is missing, this downloads Python 3.13.5 from [python.org](https://www.python.org/downloads/) and installs it only for this tool, under `%LOCALAPPDATA%\synthetik-save-editor\`. |
+| `cli.bat` | The text menu. Same Python setup as `start.bat`. |
+| `py main.py` | The text menu, when Python is already installed. `py main.py --gui` opens the window. |
+| `build_exe.bat` | Builds `dist\synthetik-save-editor.exe` and `dist\synthetik-save-editor-cli.exe` on this PC with [PyInstaller](https://pyinstaller.org/). The exe is a Windows launcher packed with a normal Python interpreter and this program. |
 
-```console
-python main.py
-```
+`editor.pyw` is the same window as `start.bat` on a PC where double-clicking a `.pyw` file already opens Python.
 
 ---
 
 ## Current features
 
-- **Change daily module bonuses** to any number (all 62, one perk, or a random roll from `count:value` pairs).
+- **Change daily module bonuses** to any number (all 62, or one perk).
 - **View current perk boosts**.
 - **Set data** (the `currency` resource) to a chosen value.
 - **Daily run ticket** (`drun`): reset it to 1 so the once-a-day run is available again. Starting a run sets it to 0. The game normally writes 1 about 12 hours after the last login.
 - **Loadout presets**: save one subclass's slots + tokens to a file in `loadouts/`, load it back, rename, delete.
-- **Graphical editor** (`py main.py --gui`): clickable menu matching the CLI. The loadout card is one option; perk boosts, data, presets, backups, and viewing save loadouts are the others. The first time you open a loadout it can crop item/perk/weapon icons from your installed Synthetik `data.win` and cache them in `game_icons/` (not in git). To drop that feature later: delete `game_icons.py`, the `game_icons/` folder, and the few `game_icons` lines in `gui.py`.
+- **Window:** the loadout card, plus **Options** on the menu bar for perk boosts, data, presets, backups, the daily run ticket, and starting the game. The first time you open a loadout it can crop item/perk/weapon icons from your installed Synthetik `data.win` and cache them in `game_icons/` (not in git). To drop that feature later: delete `game_icons.py`, the `game_icons/` folder, and the few `game_icons` lines in `gui.py`.
 - **Cheat levels** on each slot pick (Vanilla first, then widen that pick). The loadout is legal at the highest level any slot needs. White squares on the card show that level. The game may still reset illegal loadouts.
 - **Restore a backup** of the save the tool created.
-- **Start Synthetik** from the menu (option 11). Close the game again before the next edit.
+- **Start Synthetik** from **Options**, or from text-menu option 11. Close the game again before the next edit.
 
 ---
 
@@ -62,50 +59,7 @@ python main.py
 
    `C:\Users\<YourUsername>\AppData\Local\Synthetik\Save.sav`
 
-   When the tool starts, the path prompt is **pre-filled** with your last used path (if it still exists) or the usual Windows location. Press **Enter** to accept it. To **auto-detect** a different save file instead, clear the line and press **Enter** again. You can also pass a path on the command line, e.g. `py main.py "C:\Users\<YourUsername>\AppData\Local\Synthetik"`.
-
----
-
-
-
-## How to use
-
-You need **Python 3** installed. Check from a terminal:
-
-```console
-py --version
-```
-
-or
-
-```console
-python --version
-```
-
-If that works, download or clone this repo, open a terminal in the project folder, and run:
-
-```console
-py main.py
-```
-
-Follow the on-screen menu. On some systems the command may be `python main.py` instead of `py main.py`.
-
-To open the window directly:
-
-```console
-py main.py --gui
-```
-
-Tip: make a *.bat file to avoid having to provide the savefile path every time you run the tool.
-Example:
-```bat
-@echo off
-cd /d "E:\synthetik-save-editor"
-py main.py "C:\Users\<UserName>\AppData\Local\Synthetik\Save.sav"
-```
-
-[Official Python download page](https://www.python.org/downloads/)
-(The tool was tested with [Python 3.13](https://www.python.org/downloads/latest/python3.13/) on Windows 10)
+   How that file is chosen is under [The save file](#the-save-file) above.
 
 ---
 
@@ -125,7 +79,7 @@ py main.py --gui "C:\Users\<UserName>\AppData\Local\Synthetik\Save.sav"
 
 | Argument | Meaning |
 | --- | --- |
-| *(none)* | Ask for a path (pre-filled). Then show the text menu. |
+| *(none)* | Use the remembered save if that file still exists. Otherwise confirm the auto-found `Save.sav`, or pick one in the Windows file window. Then show the text menu. |
 | `PATH` | A save file, or a folder that should contain `Save.sav`. On success, no path prompt. |
 | `--gui` | Open the window after the save path is resolved. May appear anywhere among the arguments. |
 
@@ -136,9 +90,9 @@ py main.py --gui "C:\Users\<UserName>\AppData\Local\Synthetik\Save.sav"
 3. Existing file with another name → confirm `Y` / `N`, then use it if `Y`.
 4. Anything else, including a missing `Save.sav` → invalid.
 
-With **no** argument, the prompt is pre-filled with the last used path (if that file still exists) or `%LOCALAPPDATA%\Synthetik\Save.sav`. Enter accepts it. Clear the line and press Enter to auto-detect.
+With **no** argument, a remembered save in `%APPDATA%\synthetik-save-editor\config.json` is used when that file still exists. Otherwise the tool looks for `%LOCALAPPDATA%\Synthetik\Save.sav` and asks you to accept it or pick another file. Cancelling that window exits without editing.
 
-With a **path argument**, the tool uses it and does not prompt. If that path cannot be used, it prints an error, waits for Enter, and exits with status `1`. That is a caller error; pass a path that exists, or run with no argument to be prompted.
+With a **path argument**, the tool uses it and does not ask. If that path cannot be used, it prints an error, waits for Enter, and exits with status `1`. That is a caller error. A desktop `.bat` that already passes a save path keeps working.
 
 ### Exit status
 
@@ -169,7 +123,6 @@ Backups are created **next to the save file being edited**, with the same base n
 
 * Loadout presets for one subclass at a time (slots + tokens).
 * Graphical editor: loadout card, perk boosts, data, presets, backups.
-* Perk boost randomize from a `count:value` list (reroll / accept / cancel).
 * Restore a timestamped backup.
 * Data can be set to any number, not only 1000.
 * Token view shows item/weapon names from `obj_itemN` / `obj_weapon_*_N`.
@@ -185,7 +138,12 @@ Project files overview
 
 | File           | Role                                         |
 | -------------- | -------------------------------------------- |
-| `main.py`      | Starts the program and shows the menu        |
+| `main.py`      | Text menu and the save-path rules            |
+| `editor.pyw`   | Opens the window with no console             |
+| `start.bat`    | Opens the window. See [Ways to start](#ways-to-start) |
+| `cli.bat`      | Opens the text menu. See [Ways to start](#ways-to-start) |
+| `ensure_python.ps1` | Installs the official Python for this tool only |
+| `build_exe.bat`| Builds the Windows exe from these scripts    |
 | `gui.py`       | tkinter window (loadout / perks / data / presets / backups) |
 | `loadouts.py`  | Read/write subclass loadouts and preset files |
 | `catalog.py`   | Display names and loadout-pool lists         |

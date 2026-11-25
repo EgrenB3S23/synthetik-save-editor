@@ -7,8 +7,10 @@ alwaysApply: true
 
 `main.py` is a public command-line interface. Existing `.bat` files and scripts pass a save path as the first non-flag argument.
 
-- Do not change v1.1 path handling: no arg → prompt; path arg → use it or exit 1; never turn a missing argv path into a prompt.
-- `--gui` must not steal the path slot. `py main.py "D:\path\Save.sav"` must keep working.
+- Path argument: use it or exit 1. Never turn a missing argv path into a prompt.
+- No argument: use the remembered save if that file still exists. Otherwise auto-find `Save.sav` and confirm it with the Windows file window. Do not go back to a typed path prompt for that case.
+- `editor.pyw` and `start.bat` open the window and do not leave a console open. That is the normal way to start the tool.
+- `cli.bat` and `py main.py` open the text menu. `--gui` on `main.py` still must not steal the path slot.
 - Do not add required flags or rename `main.py`.
 
 See `AGENTS.md` (Command-line interface) and the README section of the same name.

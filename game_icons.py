@@ -32,9 +32,13 @@ PERK_SPRITE_ALIASES = {
     "assaultgunner": "spr_perk_heavygunnercore",
     "ammoregen": "spr_perk_multiply",
     "breacher": "spr_perk_breachercore",
-    "classweapon": "spr_perk_hon",
+    # In-game Weapon Drop art is spr_weapon_1. That sprite used to be the
+    # fallback for weapons with no icon; those now use the old pistol, spr_perk_hon.
+    "classweapon": "spr_weapon_1",
     "dance": "spr_perk_shadowdance",
     "demolisher": "spr_perk_demolishercore",
+    # Eight-point saw: filled center, hollow ring, spiked outer ring.
+    "diehard": "spr_perk_revenge",
     "drone1": "spr_perk_markdrone",
     "drill": "spr_perk_dexterity",
     "ejectsurge": "spr_perk_switchposition",
@@ -46,15 +50,18 @@ PERK_SPRITE_ALIASES = {
     "heatrecharge": "spr_perk_itemheat",
     "heatup": "spr_perk_heato",
     "itemcdvariant": "spr_perk_revised",
+    # Confirmed in-game. The sprite name matches Head Hunter; the picture is Killer's.
     "killer": "spr_perk_headshotammo",
     "killshield": "spr_perk_shield",
     "marksman": "spr_perk_snipercore",
     "pistolextender": "spr_perk_pistol",
-    "powertuning": "spr_perk_tuning",
+    # Same two hollow chevrons as Pack a Punch. spr_rank_2 is the same shape
+    # at a smaller size, so it looked narrow and pixelated next to the other perks.
+    "powertuning": "spr_perk_packapunch",
     "raider": "spr_perk_raidercore",
     "randomperk": "spr_perk_back3_hex",
-    # Name and icon are known wrong. Leave until checked in game.
-    "reactivereload": "spr_perk_critreload",
+    # Kite shield with a hollow snowflake. Keeping Cool.
+    "reactivereload": "spr_perk_keepcool",
     "recovery": "spr_effect_healing",
     "reloadstack": "spr_perk_routine",
     "reloadsurge2": "spr_perk_reloadsurge",
@@ -64,15 +71,26 @@ PERK_SPRITE_ALIASES = {
     "shotgun": "spr_perk_shotgun1",
     "shotgunmaster": "spr_perk_shotgun1",
     "elementalpower": "spr_item_elemental",
-    # Staggered bullets pointing down. May be three bullets pointing up; leave until checked.
+    # Screwdriver and double-headed wrench. The game draws this sprite mirrored
+    # left-right; see MIRROR_X_SPRITES.
+    "specialized": "spr_perk_specialized",
     "specializedammo": "spr_perk_specammo",
     "statusextender": "spr_perk_status",
     "sunrise": "spr_perk_heatvent",
     "wepupgrade": "spr_perk_packapunch",
 }
 
+GENERIC_WEAPON_SPRITE = "spr_weapon_1"
+MISSING_WEAPON_SPRITE = "spr_perk_hon"
 _SKIP_SPRITES = {"spr_buff_spreadcontrol"}
+# Mirror along the vertical axis. The source art faces the other way from the game UI.
+MIRROR_X_SPRITES = {"spr_perk_specialized"}
+# The icon filename does not match the object prefix.
+WEAPON_SPRITE_ALIASES = {
+    "obj_weapon_G17_63": "spr_weapon63_G18_icon",
+}
 _photos: dict[str, tk.PhotoImage] = {}
+_scaled: dict[tuple[str, int], tk.PhotoImage] = {}
 _ready = False
 
 
@@ -251,8 +269,60 @@ def _write_png(path: Path, width: int, height: int, rgba: bytes) -> None:
     )
 
 
+def _trim_transparent(rgba: bytes, width: int, height: int) -> tuple[bytes, int, int]:
+    """Drop empty margins so a padded sprite still fills the icon."""
+    if width <= 0 or height <= 0:
+        return rgba, width, height
+
+    def row_empty(y: int) -> bool:
+        start = y * width * 4
+        return all(rgba[start + x * 4 + 3] == 0 for x in range(width))
+
+    def col_empty(x: int, top: int, bottom: int) -> bool:
+        return all(rgba[(y * width + x) * 4 + 3] == 0 for y in range(top, bottom + 1))
+
+    top = 0
+    while top < height and row_empty(top):
+        top += 1
+    bottom = height - 1
+    while bottom >= top and row_empty(bottom):
+        bottom -= 1
+    if top > bottom:
+        return rgba, width, height
+    left = 0
+    while left < width and col_empty(left, top, bottom):
+        left += 1
+    right = width - 1
+    while right >= left and col_empty(right, top, bottom):
+        right -= 1
+    trimmed_w = right - left + 1
+    trimmed_h = bottom - top + 1
+    if trimmed_w == width and trimmed_h == height:
+        return rgba, width, height
+    out = bytearray(trimmed_w * trimmed_h * 4)
+    row_bytes = trimmed_w * 4
+    for y in range(trimmed_h):
+        src = ((top + y) * width + left) * 4
+        out[y * row_bytes : (y + 1) * row_bytes] = rgba[src : src + row_bytes]
+    return bytes(out), trimmed_w, trimmed_h
+
+
+def _mirror_horizontal(rgba: bytes, width: int, height: int) -> bytes:
+    """Flip left-right. Each row is reversed in place as pixels, not bytes."""
+    out = bytearray(len(rgba))
+    row_bytes = width * 4
+    for y in range(height):
+        start = y * row_bytes
+        for x in range(width):
+            src = start + x * 4
+            dst = start + (width - 1 - x) * 4
+            out[dst : dst + 4] = rgba[src : src + 4]
+    return bytes(out)
+
+
 def _fit(rgba: bytes, width: int, height: int, size: int) -> bytes:
     """Nearest-neighbour fit into a size×size transparent square."""
+    rgba, width, height = _trim_transparent(rgba, width, height)
     canvas = bytearray(size * size * 4)
     if width <= 0 or height <= 0:
         return bytes(canvas)
@@ -340,6 +410,9 @@ def _perk_sprite(object_id: str, names: set[str]) -> str | None:
 
 
 def _weapon_sprite(object_id: str, names: set[str]) -> str | None:
+    alias = WEAPON_SPRITE_ALIASES.get(object_id)
+    if alias and alias in names:
+        return alias
     match = re.match(r"obj_weapon_([A-Za-z0-9]+)_(\d+)$", object_id)
     if not match:
         return None
@@ -444,6 +517,10 @@ def extract(data_win: Path | None = None) -> int:
                     sprite_name = _item_sprite(object_id, sprite_names, obj_sprites.get(object_id))
                 if not sprite_name:
                     sprite_name = obj_sprites.get(object_id)
+                if object_id.startswith("obj_weapon_") and (
+                    not sprite_name or sprite_name == GENERIC_WEAPON_SPRITE
+                ):
+                    sprite_name = MISSING_WEAPON_SPRITE
                 if not sprite_name or sprite_name in _SKIP_SPRITES:
                     continue
                 ptr = sprite_ptrs.get(sprite_name)
@@ -456,6 +533,8 @@ def extract(data_win: Path | None = None) -> int:
                 if cropped is None:
                     continue
                 width, height, rgba = cropped
+                if sprite_name in MIRROR_X_SPRITES:
+                    rgba = _mirror_horizontal(rgba, width, height)
                 png = _fit(rgba, width, height, ICON_SIZE)
                 _write_png(dest, ICON_SIZE, ICON_SIZE, png)
                 written += 1
@@ -546,16 +625,37 @@ def attach(parent, object_id: str | None, bg: str, size: int = ICON_SIZE):
     path = icon_dir() / f"{object_id}.png"
     if not path.is_file():
         return None
-    photo = _photos.get(object_id)
-    if photo is None:
+    base = _photos.get(object_id)
+    if base is None:
         try:
-            photo = tk.PhotoImage(file=str(path), master=parent.winfo_toplevel())
+            base = tk.PhotoImage(file=str(path), master=parent.winfo_toplevel())
         except tk.TclError:
             return None
-        _photos[object_id] = photo
+        _photos[object_id] = base
+    photo = _photo_for_size(object_id, base, size)
     label = tk.Label(parent, image=photo, bg=bg, bd=0, highlightthickness=0)
     label.image = photo
     return label
+
+
+def _photo_for_size(object_id: str, base: tk.PhotoImage, size: int) -> tk.PhotoImage:
+    """Integer scale of the cached icon. Large is zoom(2, 2), so both axes double."""
+    if size == ICON_SIZE or ICON_SIZE <= 0:
+        return base
+    key = (object_id, size)
+    cached = _scaled.get(key)
+    if cached is not None:
+        return cached
+    if size > ICON_SIZE and size % ICON_SIZE == 0:
+        factor = size // ICON_SIZE
+        cached = base.zoom(factor, factor)
+    elif 0 < size < ICON_SIZE and ICON_SIZE % size == 0:
+        factor = ICON_SIZE // size
+        cached = base.subsample(factor, factor)
+    else:
+        cached = base
+    _scaled[key] = cached
+    return cached
 
 
 def main() -> None:
