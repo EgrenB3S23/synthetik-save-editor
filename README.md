@@ -1,37 +1,46 @@
 # Synthetik Save Editor
 
-A save editor for **Synthetik** (Synthetik 1) on PC. Download the release and double-click `synthetik-save-editor.exe`. That opens the window. A text menu is in the same download if you want it. Compatibility tested against patch 27, and it should work at least as far back as patch 26.
+A save editor for **Synthetik** (Synthetik 1) on PC. The [1.2 release](https://github.com/EgrenB3S23/synthetik-save-editor/releases/tag/v1.2) has two downloads: one with the Windows programs, and one without. Tested on Synthetik 1 patch 27.
 
 ![Loadout editor](images/SSEv1_2_loadout.png)
 
 ## Ways to start
 
-Download the release and double-click **`synthetik-save-editor.exe`**. That opens the window. No Python install, and no batch file.
+Open the [1.2 release](https://github.com/EgrenB3S23/synthetik-save-editor/releases/tag/v1.2). It lists two downloads. Pick one.
 
-The same download includes **`synthetik-save-editor-cli.exe`**. Double-click that one only if you want the numbered text menu instead.
+### With the .exe files
 
-Windows 10/11, 64-bit. A shortcut on the desktop can point at the exe. The 1.2 package is not on the [releases page](https://github.com/EgrenB3S23/synthetik-save-editor/releases/latest) yet. The file there today is version 1.1, which is the older text-menu program.
+Download **`synthetik-save-editor-1.2-windows.zip`**. Unzip it. It contains only the two programs:
 
-The window opens on the loadout card. **Options** on the menu bar has perk boosts, data, presets, backups, the daily run ticket, and starting Synthetik.
+| File | What it opens |
+| --- | --- |
+| `synthetik-save-editor.exe` | The window. This is the one to double-click. |
+| `synthetik-save-editor-cli.exe` | The numbered text menu. |
 
-### The save file
+Windows 10/11, 64-bit. No Python install. A desktop shortcut can point at the window exe.
 
-The first start looks for `%LOCALAPPDATA%\Synthetik\Save.sav`. A window asks you to use that file or pick another. The choice is stored in `%APPDATA%\synthetik-save-editor\config.json`. Later starts use it while the file is still there. **Options → Choose a different save file**, **Change…** in the window, or text-menu option **6** picks a different one. Close Synthetik before you edit.
+### Without the .exe files
 
-A path on the command line skips that question, for example `synthetik-save-editor.exe "C:\Users\<UserName>\AppData\Local\Synthetik"`. An old shortcut that already passes a save path keeps working. The full rules are in [Command-line interface](#command-line-interface) below.
-
-### From the source folder
-
-Use this when you have the project files and would rather not run a downloaded exe.
+On the same release page, download **Source code (zip)**. That archive is the project files. It does not contain either exe.
 
 | Start this | What opens |
 | --- | --- |
 | `start.bat` | The window. If Python is missing, this downloads Python 3.13.5 from [python.org](https://www.python.org/downloads/) and installs it only for this tool, under `%LOCALAPPDATA%\synthetik-save-editor\`. |
 | `cli.bat` | The text menu. Same Python setup as `start.bat`. |
 | `py main.py` | The text menu, when Python is already installed. `py main.py --gui` opens the window. |
-| `build_exe.bat` | Builds `dist\synthetik-save-editor.exe` and `dist\synthetik-save-editor-cli.exe` on this PC with [PyInstaller](https://pyinstaller.org/). The exe is a Windows launcher packed with a normal Python interpreter and this program. |
+| `build_exe.bat` | Builds both exe files on this PC with [PyInstaller](https://pyinstaller.org/), into `dist\`. The exe is a Windows launcher packed with a normal Python interpreter and this program. |
 
 `editor.pyw` is the same window as `start.bat` on a PC where double-clicking a `.pyw` file already opens Python.
+
+Version 1.1 on the releases page is the older text-menu program, one exe and no window.
+
+The window opens on the loadout card. **Options** on the menu bar has perk boosts, data, presets, backups, the daily run ticket, and starting Synthetik.
+
+### The save file
+
+The first start looks for `%LOCALAPPDATA%\Synthetik\Save.sav`. A window asks you to use that file or pick another. The choice is stored in `%APPDATA%\synthetik-save-editor\config.json`. Later starts use it while the file is still there. **Options → Choose a different save file**, **Change…** in the window, or text-menu option **6** picks a different one. Synthetik writes the save when you exit the game. Start this tool while the game is not running, and save your edits before you start the game.
+
+A path on the command line skips that question, for example `synthetik-save-editor.exe "C:\Users\<UserName>\AppData\Local\Synthetik"`. An old shortcut that already passes a save path keeps working. The full rules are in [Command-line interface](#command-line-interface) below.
 
 ---
 
@@ -119,14 +128,15 @@ Backups are created **next to the save file being edited**, with the same base n
 
 ## Changelog
 
-### 1.2 (in progress, not a GitHub release yet)
+### 1.2
 
-* Loadout presets for one subclass at a time (slots + tokens).
-* Graphical editor: loadout card, perk boosts, data, presets, backups.
-* Restore a timestamped backup.
-* Data can be set to any number, not only 1000.
-* Token view shows item/weapon names from `obj_itemN` / `obj_weapon_*_N`.
-* CLI: edit a single loadout slot from a filtered list.
+* Two downloads: a Windows zip with both exe files, and the source archive without them.
+* The window is the normal way to use the tool. **Options** covers perk boosts, data, presets, backups, the daily ticket, and starting the game.
+* First start finds `Save.sav` and asks before using it.
+* In-game names and icons for class perks, starting pistols, and starting items.
+* **Save changes** stays off until the loadout differs from the file.
+* Click a perk to type one daily boost. A period and a comma both enter a decimal point.
+* Loadout presets for one subclass (slots and tokens), backup restore, and data set to any number.
 
 ### 1.1
 * Now also supports changing the bonus for each perk individually.
@@ -165,7 +175,7 @@ This is an unofficial fanmade tool, not affiliated with the Synthetik developers
 
 ### Versions used during testing
 
-- Synthetik 1: compatibility tested against patch 27. Earlier testing was on patch 26.1. Should also work at least as far back as patch 26.
+- Synthetik 1: tested on patch 27.
 - Python: 3.13.5
 - OS: Windows 10
 

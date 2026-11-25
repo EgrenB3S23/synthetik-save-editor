@@ -871,7 +871,7 @@ class EditorApp:
         left.grid(row=0, column=0, sticky="ew")
         right.grid(row=0, column=1, sticky="e", padx=(12, 0))
         left.columnconfigure(1, weight=1)
-        make_label(left, "current savefile:", fg=MUTED, font=("Segoe UI", 9)).grid(
+        make_label(left, "Current savefile:", fg=MUTED, font=("Segoe UI", 9)).grid(
             row=0, column=0, sticky="w", padx=(0, 8)
         )
         path_label = make_label(
@@ -922,14 +922,14 @@ class EditorApp:
         make_label(bottom, "", textvariable=self._status, fg=MUTED).pack(side="left", padx=12)
         make_label(
             bottom,
-            "Tested on Synthetik 1 patch 27. Also works on patch 26.",
+            "Tested on Synthetik 1 patch 27.",
             fg=MUTED,
             font=("Segoe UI", 8),
         ).pack(side="right")
 
         make_label(
             self._page,
-            "Close Synthetik before Save changes. Reload picks up changes the game wrote.",
+            "Synthetik saves changes to the savefile when you exit the game. Start this tool when the game is NOT running, and save any changes before starting the game.",
             fg=MUTED,
             font=("Segoe UI", 9),
         ).pack(anchor="w", padx=12, pady=(0, 10))
@@ -1928,7 +1928,7 @@ class PerksView:
         make_label(self.frame, "Perk daily module boosts", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         make_label(
             self.frame,
-            "Set all from the value box, click a perk to type one boost, or read the current values.",
+            "This view displays all class perks and their current boosts. You can edit them individually by clicking them, or edit them all by using the below inputbox and button.",
             fg=MUTED,
         ).pack(anchor="w")
         row = make_frame(self.frame)
